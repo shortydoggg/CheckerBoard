@@ -28,3 +28,12 @@ engines/simplech.lib
 *.ipdb
 engines/*.*
 *.bak
+.vs
+egdb.dll
+Debug
+Release
+x64
+setup/Executables/*.exe
+setup/Executables/*.dll
+setup/Executables/*.bin
+setup/Executables/*.htm
