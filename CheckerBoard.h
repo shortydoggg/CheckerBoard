@@ -4,7 +4,7 @@
 // CBconsts.h
 
 // version 
-#define VERSION 1.651
+#define VERSION "1.70"
 
 #define OP_BOARD 0			// different opening decks
 #define OP_MAILPLAY 1
@@ -21,8 +21,14 @@
 #define OF_LOADGAME 1
 #define OF_SAVEASHTML 2
 #define OF_USERBOOK 3
+#define OF_BOOKFILE 4		/* Opening book filenme. */
 
 #define MAXPIECESET 16
+
+#define ENGINECOMMAND_REPLY_SIZE 1024
+
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
+
 
 // window functions
 BOOL	InitApplication(HINSTANCE);
@@ -45,11 +51,12 @@ int		createcheckerboard(HWND hwnd);
 void	doload(struct PDNgame *PDNgame, char *gamestring, int *color, int board8[8][8]);
 int		domove(struct CBmove m,int b[8][8]);
 int		dostats(int result, int movecount, int gamenumber, int *wins, int *draws, int *losses, int *unknowns, int *blackwins, int *blacklosses, char *matchlogstring);
-int		enginecommand(char command[256],char reply[1024]);
+int		enginecommand(char command[256],char reply[ENGINECOMMAND_REPLY_SIZE]);
 int		enginename(char str[256]);
 int		getfilename(char filename[255],int what);
 int		getanimationbusy(void);
 int		getenginebusy(void);
+void abortengine();
 int		getenginestarting(void);
 int		getmovenumber(struct listentry *cur);
 int		handlegamereplace(int replaceindex, char *databasename);
@@ -57,9 +64,6 @@ int		handlesetupcc(int *color);
 int		handletimer(void);
 int		handle_lbuttondown(int x, int y);
 int		handle_rbuttondown(int x, int y);
-#ifndef _WIN64
-//int		handletooltiprequest(LPTOOLTIPTEXT TTtext); 
-#endif
 void	InitCheckerBoard(int b[8][8]);
 void	initengines(void);
 HWND	InitHeader(HWND hwnd);
@@ -86,6 +90,9 @@ int		start3move(void);
 int		texttoclipboard(char *text);
 int		undomove(struct CBmove m,int b[8][8]);
 
+int getmovelist(int color,struct CBmove m[MAXMOVES], int b[8][8], int *isjump);
+extern char CBdirectory[256];	// holds the directory from where CB is started:
+extern char CBdocuments[MAX_PATH];
 
 #define random(x) (rand() % x);
 
@@ -155,15 +162,12 @@ int		undomove(struct CBmove m,int b[8][8]);
 #define LEVELSUBTRACTTIME 355
 #define PIECESET 380
 
-#define OPTIONSBOOK 320
-#define OPTIONSENGINE 321
 #define OPTIONSHIGHLIGHT 322
 #define OPTIONSSOUND 323
 #define OPTIONSPRIORITY 324
 #define OPTIONS3MOVE 40001
 #define OPTIONSDIRECTORIES 40002
 #define OPTIONSUSERBOOK 325
-#define OPTIONSCOMMENTWINDOW 326
 #define OPTIONSLANGUAGEENGLISH 370
 #define OPTIONSLANGUAGEESPANOL 371
 #define OPTIONSLANGUAGEITALIANO 372
@@ -196,8 +200,6 @@ int		undomove(struct CBmove m,int b[8][8]);
 #define HELPHOMEPAGE 405
 #define PROBLEMOFTHEDAY 406
 #define ONLINEUPGRADE 407
-#define CM_ACF 408
-#define CM_EDA 409
 
 #define SETUPMODE 501
 #define SETUPCLEAR 502
@@ -220,7 +222,6 @@ int		undomove(struct CBmove m,int b[8][8]);
 #define CM_BUILDEGDB 900
 
 
-#define IDB_BITMAP 69
 #define IDTB_BMP 300
 #define ID_TOOLBAR 200
 

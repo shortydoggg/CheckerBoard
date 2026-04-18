@@ -7,12 +7,24 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <stdio.h>
+#include <shlobj.h>
+#include "resource.h"
 #include "standardheader.h"
 #include "CBstructs.h"
 #include "CBconsts.h"
 #include "dialogs.h"
 #include "CheckerBoard.h"
 #include "pdnfind.h"
+
+
+#ifdef _WIN64
+#define GWL_HINSTANCE GWLP_HINSTANCE
+#else
+#ifndef GetWindowLongPtr
+#define GetWindowLongPtr GetWindowLong
+#define SetWindowLongPtr SetWindowLong
+#endif
+#endif
 
 extern struct CBoptions gCBoptions;
 extern char str[1024];
@@ -24,6 +36,62 @@ extern struct listentry *current, *head, *tail;
 int HeaderHeight;
 int columns[NUMCOLS]={PLAYERWIDTH,PLAYERWIDTH,RESULTWIDTH,EVENTWIDTH};
 int Tabs[4];
+
+/* Combo box entries. */
+static int limit_pieces[] = {24, 10, 9, 8, 7, 6, 5, 4};
+static int thread_limits[] = {4, 3, 2, 1};
+
+
+INT CALLBACK BrowseCallbackProc(HWND hwnd, 
+                                UINT uMsg,
+                                LPARAM lp, 
+                                LPARAM pData) 
+{
+	TCHAR szDir[MAX_PATH];
+
+	switch(uMsg) {
+	case BFFM_INITIALIZED:
+		/* The initial directory was passed in pData. */
+		SendMessage(hwnd, BFFM_SETSELECTION, TRUE, (LPARAM)pData);
+		break;
+
+	case BFFM_SELCHANGED: 
+		// Set the status window to the currently selected path.
+		if (SHGetPathFromIDList((LPITEMIDLIST) lp, szDir)) {
+			SendMessage(hwnd,BFFM_SETSTATUSTEXT,0,(LPARAM)szDir);
+		}
+		break;
+	}
+	return 0;
+}
+
+
+int browse_to_dir(char *title, char *path)
+{
+	int status;
+	BROWSEINFO bi;
+	LPITEMIDLIST pidl;
+	char init_path[MAX_PATH];
+
+	memset(&bi, 0, sizeof(bi));
+	bi.lpszTitle = title;
+	bi.hwndOwner = hwnd;
+	bi.ulFlags = BIF_RETURNFSANCESTORS | BIF_RETURNONLYFSDIRS | BIF_USENEWUI;
+	bi.lpfn = BrowseCallbackProc;
+
+	strcpy(init_path, path);
+	bi.lParam = (LPARAM)init_path;
+
+	pidl = SHBrowseForFolder(&bi);
+	if (pidl != 0) {
+		status = SHGetPathFromIDList(pidl, path);
+		if (SUCCEEDED(status)) {
+			CoTaskMemFree(pidl);
+			return(1);
+		}
+	}           
+	return(0);
+}
 
 
 BOOL CALLBACK AboutDialogFunc(HWND hdwnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -449,10 +517,11 @@ BOOL CALLBACK DialogSearchMask(HWND hdwnd, UINT message, WPARAM wParam, LPARAM l
 	return 0;
 	}
 
+
 BOOL CALLBACK DialogFuncEnginecommand(HWND hdwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
 	// allow entry of an engine command.
-	char command[256], reply[1024];
+	char command[256], reply[ENGINECOMMAND_REPLY_SIZE];
 
 	switch(message)
 		{
@@ -523,12 +592,98 @@ BOOL CALLBACK DirectoryDialogFunc(HWND hdwnd, UINT message, WPARAM wParam, LPARA
 	return 0;
 	}
 
+
+/*
+ * Extract just the filename from the full file specification.
+ */
+int extract_filename(char *filespec, char *name)
+{
+	int i, len;
+
+	len = (int)strlen(filespec);
+	for (i = len - 1; i >= 0; --i)
+		if (filespec[i] == '\\' || filespec[i] == '/' || filespec[i] == ':')
+			break;
+
+	strcpy(name, filespec + i + 1);
+	return(0);
+}
+
+
+BOOL CALLBACK DialogFuncMoreOptions(HWND hwnd, UINT msg, UINT wparam, LONG lparam)
+{
+	char buf[MAX_PATH];
+	static MORE_ENGINE_OPTIONS current_options, new_options;
+	char command[256], reply[ENGINECOMMAND_REPLY_SIZE];
+
+	switch (msg) {
+	case WM_INITDIALOG:
+		// center dialog box on CB window
+		CenterDialog(hwnd);
+		get_more_engine_options(hwnd, &current_options);
+		new_options = current_options;
+		return 1;
+		break;
+
+	case WM_COMMAND:
+		switch (LOWORD(wparam)) {
+		case IDC_CANCEL:
+			EndDialog(hwnd, 0);
+			return(1);
+
+		case IDC_BOOKFILE_BROWSE_BUTTON:
+			SetCurrentDirectory(gCBoptions.userdirectory);
+			SendDlgItemMessage(hwnd, IDC_BOOKFILE_EDIT, WM_GETTEXT, sizeof(new_options.book_filename), (LPARAM)new_options.book_filename);
+			if (getfilename(buf, OF_BOOKFILE)) {
+				extract_filename(buf, new_options.book_filename);
+				SendDlgItemMessage(hwnd, IDC_BOOKFILE_EDIT, WM_SETTEXT, 0, (LPARAM)new_options.book_filename);
+			}
+			SetCurrentDirectory(CBdirectory);
+			return(1);
+
+		case IDC_BROWSE_WLD_DIR_BUTTON:
+			SendDlgItemMessage(hwnd, IDC_WLD_DIR_EDIT, WM_GETTEXT, sizeof(new_options.wld_directory), (LPARAM)new_options.wld_directory);
+			if (browse_to_dir("Choose the WLD database directory", new_options.wld_directory))
+				SendDlgItemMessage(hwnd, IDC_WLD_DIR_EDIT, WM_SETTEXT, 0, (LPARAM)new_options.wld_directory);
+			return(1);
+
+		case IDC_BROWSE_MTC_DIR_BUTTON:
+			SendDlgItemMessage(hwnd, IDC_MTC_DIR_EDIT, WM_GETTEXT, sizeof(new_options.mtc_directory), (LPARAM)new_options.mtc_directory);
+			if (browse_to_dir("Choose the MTC database directory", new_options.mtc_directory))
+				SendDlgItemMessage(hwnd, IDC_MTC_DIR_EDIT, WM_SETTEXT, 0, (LPARAM)new_options.mtc_directory);
+			return(1);
+
+		case IDC_CHECK_WLD_DIR_BUTTON:
+			get_more_engine_options_from_dialog(hwnd, &new_options);
+			sprintf(command, "set check_wld_dir %s", new_options.wld_directory);
+			enginecommand(command, reply);
+			MessageBox(hwnd, reply, "WLD Endgame Database Directory Check", MB_OK);
+			return(1);
+
+		case IDC_CHECK_MTC_DIR_BUTTON:
+			get_more_engine_options_from_dialog(hwnd, &new_options);
+			sprintf(command, "set check_mtc_dir %s", new_options.mtc_directory);
+			enginecommand(command, reply);
+			MessageBox(hwnd, reply, "MTC Endgame Database Directory Check", MB_OK);
+			return(1);
+
+		case IDC_OK:
+			get_more_engine_options_from_dialog(hwnd, &new_options);
+			set_more_engine_options(hwnd, &current_options, &new_options);
+			EndDialog(hwnd, 0);
+			return(1);
+		}
+		break;
+	}
+	return 0;
+}
+
+
 BOOL CALLBACK EngineOptionsFunc(HWND hdwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
 	// sets engine options for primary and secondary engines.
 	// TODO: if settings are not changed, but OK pressed, don't send command to the
 	// engine
-
 	char Lstr[256];
 	static ENGINE_OPTIONS primaryoptions;
 	static ENGINE_OPTIONS secondaryoptions;
@@ -542,7 +697,7 @@ BOOL CALLBACK EngineOptionsFunc(HWND hdwnd, UINT message, WPARAM wParam, LPARAM 
 	extern int currentengine;
 	extern int togglebook;
 
-	MEMORYSTATUS memstat;
+	MEMORYSTATUSEX memstat;
 
 	switch (message)
 		{
@@ -564,8 +719,9 @@ BOOL CALLBACK EngineOptionsFunc(HWND hdwnd, UINT message, WPARAM wParam, LPARAM 
 		
 			// initialize hashtable size combobox
 			// get global memory size
-			GlobalMemoryStatus(&memstat);
-			availableMB = memstat.dwTotalPhys / (1024*1024);
+			memstat.dwLength = sizeof(memstat);
+			GlobalMemoryStatusEx(&memstat);
+			availableMB = (int)(memstat.ullTotalPhys / (1024*1024));
 			if(availableMB>16)
 				SendDlgItemMessage(hdwnd,IDC_HASHSIZE,LB_ADDSTRING,0,(LPARAM)"8");
 			if(availableMB>30)
@@ -661,6 +817,10 @@ BOOL CALLBACK EngineOptionsFunc(HWND hdwnd, UINT message, WPARAM wParam, LPARAM 
 						secondaryoptions = currentoptions;
 						}
 					return 1;
+
+				case IDC_MORE_OPTIONS_BUTTON:
+					DialogBox((HINSTANCE)GetWindowLongPtr(hdwnd, GWL_HINSTANCE), MAKEINTRESOURCE(IDD_MORE_ENGINE_OPTIONS_DIALOG), hdwnd, (DLGPROC)DialogFuncMoreOptions);
+					break;
 				}
 		return 1;
 		}
@@ -700,9 +860,6 @@ int getoptionsfromdialog(HWND hdwnd, ENGINE_OPTIONS *options)
 
 	// set all scores on/off
 	options->allscores = SendDlgItemMessage(hdwnd,IDC_ALLSCORES,BM_GETCHECK,0,0);
-
-	// db directory
-	GetDlgItemText(hdwnd,IDC_DBDIR,options->directory,255);
 	
 	return 1;
 	}
@@ -715,7 +872,13 @@ int setengineoptions(HWND hdwnd, int availableMB, ENGINE_OPTIONS *oldoptions, EN
 	
 	if(newoptions->db_MB + newoptions->hash_MB > availableMB-32)
 		{
-		sprintf(Lstr,"You have selected a combined\nhashtable (%i) and endgame cache (%i)\nsize which is too large for\nyour system (%i). Please reduce\nthe memory requirements.", newoptions->hash_MB, newoptions->db_MB, availableMB);
+		sprintf(Lstr,
+				"You have selected a combined\n"
+				"hashtable (%i) and endgame cache (%i)\n"
+				"size which is too large for\n"
+				"your system (%i). Please reduce\n"
+				"the memory requirements.",
+				newoptions->hash_MB, newoptions->db_MB, availableMB);
 		MessageBox(hdwnd,Lstr,"Error",MB_OK);
 		return 1;
 		}
@@ -746,10 +909,6 @@ int setengineoptions(HWND hdwnd, int availableMB, ENGINE_OPTIONS *oldoptions, EN
 		sprintf(commandstring,"set allscores %i",newoptions->allscores);
 		enginecommand(commandstring,reply);
 		}
-
-	// db directory
-	sprintf(commandstring,"set dbpath %s",newoptions->directory);
-	enginecommand(commandstring,reply);
 	
 	return 1;
 	}	
@@ -765,7 +924,7 @@ int getengineoptions(HWND hdwnd, ENGINE_OPTIONS *options)
 	if(enginecommand("get hashsize",reply))
 		{
 		SendDlgItemMessage(hdwnd,IDC_HASHSIZE,LB_SELECTSTRING,-1,(LPARAM)reply);
-		options->db_MB = atoi(reply);
+		options->hash_MB = atoi(reply);
 		}
 	else
 		SendDlgItemMessage(hdwnd,IDC_HASHSIZE,LB_SETCURSEL,-1,0);
@@ -819,6 +978,10 @@ int getengineoptions(HWND hdwnd, ENGINE_OPTIONS *options)
 		EnableWindow(hwndControl,1);
 		}
 
+	SendDlgItemMessage(hdwnd, IDC_BOOKOFF, BM_SETCHECK, 0, 0);
+	SendDlgItemMessage(hdwnd, IDC_BOOKALLKINDS, BM_SETCHECK, 0, 0);
+	SendDlgItemMessage(hdwnd, IDC_BOOKGOOD, BM_SETCHECK, 0, 0);
+	SendDlgItemMessage(hdwnd, IDC_BOOKBEST, BM_SETCHECK, 0, 0);
 	switch(options->book)
 		{
 		// can be 0 (off) ... 3 (best moves)
@@ -848,19 +1011,278 @@ int getengineoptions(HWND hdwnd, ENGINE_OPTIONS *options)
 
 	SendDlgItemMessage(hdwnd, IDC_ALLSCORES, BM_SETCHECK, options->allscores,0);
 
-	// db directory
-	if(enginecommand("get dbpath", reply))
-		strcpy(options->directory, reply);
-
-	hwndControl = GetDlgItem(hdwnd,IDC_DBDIR);
-	if(strcmp(reply,"?")==0)
-		EnableWindow(hwndControl,0);
+	/* See if we should enable the "More Options..." button. */
+	hwndControl = GetDlgItem(hdwnd, IDC_MORE_OPTIONS_BUTTON);
+	if (enginecommand("get dbpath", reply))
+		EnableWindow(hwndControl, 1);
 	else
-		EnableWindow(hwndControl,1);
+		EnableWindow(hwndControl, 0);		
 
-	SetDlgItemText(hdwnd, IDC_DBDIR, reply);
 	return 1;
 	}
+
+
+int get_more_engine_options(HWND hwnd, MORE_ENGINE_OPTIONS *options)
+{
+	int i;
+	char reply[MAX_PATH];
+	char buf[100];
+	HWND hctrl;	
+
+	/* Check if the engine supports the "dbpath" engine command. */
+	hctrl = GetDlgItem(hwnd, IDC_WLD_DIR_EDIT);
+	if (enginecommand("get dbpath", options->wld_directory)) {
+		EnableWindow(hctrl, 1);
+		SetDlgItemText(hwnd, IDC_WLD_DIR_EDIT, (LPSTR)options->wld_directory);
+
+		/* Enable the browse button. */
+		hctrl = GetDlgItem(hwnd, IDC_BROWSE_WLD_DIR_BUTTON); 
+		EnableWindow(hctrl, 1);
+
+		/* Enable the check button. */
+		hctrl = GetDlgItem(hwnd, IDC_CHECK_WLD_DIR_BUTTON); 
+		EnableWindow(hctrl, 1);
+	}
+	else {
+		options->wld_directory[0] = 0;
+		EnableWindow(hctrl, 0);
+		SetDlgItemText(hwnd, IDC_WLD_DIR_EDIT, (LPSTR)options->wld_directory);
+
+		/* Disable the browse button. */
+		hctrl = GetDlgItem(hwnd, IDC_BROWSE_WLD_DIR_BUTTON); 
+		EnableWindow(hctrl, 0);
+
+		/* Disable the check button. */
+		hctrl = GetDlgItem(hwnd, IDC_CHECK_WLD_DIR_BUTTON); 
+		EnableWindow(hctrl, 0);
+	}
+
+	/* Check if the engine supports the "enable_wld" engine command. */
+	hctrl = GetDlgItem(hwnd, IDC_WLD_ENAB_CHECK);
+	if (enginecommand("get enable_wld", reply)) {
+		EnableWindow(hctrl, 1);
+		options->wld_egdb_enable = atoi(reply);
+	}
+	else {
+		EnableWindow(hctrl, 0);
+		options->wld_egdb_enable = 0;
+	}
+	SendMessage(hctrl, BM_SETCHECK, options->wld_egdb_enable, 0); 
+
+	/* Check if the engine supports the "max_dbpieces" engine command. */
+	hctrl = GetDlgItem(hwnd, IDC_MAX_PIECES_COMBO);
+	if (enginecommand("get max_dbpieces", reply)) {
+		EnableWindow(hctrl, 1);
+		options->max_dbpieces = atoi(reply);
+		for (i = 0; i < ARRAY_SIZE(limit_pieces); ++i) {
+			if (limit_pieces[i] < 24)
+				sprintf(buf, "%d", limit_pieces[i]);
+			else
+				sprintf(buf, "No limit");
+			SendDlgItemMessage(hwnd, IDC_MAX_PIECES_COMBO, CB_ADDSTRING, 0, (LPARAM)(LPCTSTR)buf);
+
+			/* Set the initial selection. */
+			if (limit_pieces[i] == options->max_dbpieces)
+				SendDlgItemMessage(hwnd, IDC_MAX_PIECES_COMBO, CB_SETCURSEL, i, 0);
+		}
+	}
+	else {
+		EnableWindow(hctrl, 0);
+	}
+
+	/* Check if the engins supports the "enable_mtc" engine command. */
+	hctrl = GetDlgItem(hwnd, IDC_MTC_ENAB_CHECK);
+	if (enginecommand("get enable_mtc", reply)) {
+		EnableWindow(hctrl, 1);
+		options->mtc_egdb_enable = atoi(reply);
+	}
+	else {
+		EnableWindow(hctrl, 0);
+		options->mtc_egdb_enable = 0;
+	}
+	SendMessage(hctrl, BM_SETCHECK, options->mtc_egdb_enable, 0); 
+
+	/* Check if the engine supports the "mtcpath" engine command. */
+	hctrl = GetDlgItem(hwnd, IDC_MTC_DIR_EDIT);
+	if (enginecommand("get mtcpath", options->mtc_directory)) {
+		EnableWindow(hctrl, 1);
+		SetDlgItemText(hwnd, IDC_MTC_DIR_EDIT, (LPSTR)options->mtc_directory);
+
+		/* Enable the browse button. */
+		hctrl = GetDlgItem(hwnd, IDC_BROWSE_MTC_DIR_BUTTON); 
+		EnableWindow(hctrl, 1);
+
+		/* Enable the check button. */
+		hctrl = GetDlgItem(hwnd, IDC_CHECK_MTC_DIR_BUTTON); 
+		EnableWindow(hctrl, 1);
+	}
+	else {
+		options->mtc_directory[0] = 0;
+		EnableWindow(hctrl, 0);
+		SetDlgItemText(hwnd, IDC_MTC_DIR_EDIT, (LPSTR)options->mtc_directory);
+
+		/* Disable the browse button. */
+		hctrl = GetDlgItem(hwnd, IDC_BROWSE_MTC_DIR_BUTTON); 
+		EnableWindow(hctrl, 0);
+
+		/* Disable the check button. */
+		hctrl = GetDlgItem(hwnd, IDC_CHECK_MTC_DIR_BUTTON); 
+		EnableWindow(hctrl, 0);
+	}
+
+	/* Check if the engine supports the "bookfile" engine command. */
+	hctrl = GetDlgItem(hwnd, IDC_BOOKFILE_EDIT);
+	if (enginecommand("get bookfile", options->book_filename)) {
+		EnableWindow(hctrl, 1);
+		SetDlgItemText(hwnd, IDC_BOOKFILE_EDIT, (LPSTR)options->book_filename);
+
+		/* Enable the browse button. */
+		hctrl = GetDlgItem(hwnd, IDC_BOOKFILE_EDIT); 
+		EnableWindow(hctrl, 1);
+	}
+	else {
+		options->book_filename[0] = 0;
+		EnableWindow(hctrl, 0);
+		SetDlgItemText(hwnd, IDC_BOOKFILE_EDIT, (LPSTR)options->book_filename);
+
+		/* Disable the browse button. */
+		hctrl = GetDlgItem(hwnd, IDC_BOOKFILE_EDIT); 
+		EnableWindow(hctrl, 0);
+	}
+
+	/* Check if the engine supports the "searchthreads" engine command. */
+	hctrl = GetDlgItem(hwnd, IDC_MAX_SEARCH_THREADS_COMBO);
+	if (enginecommand("get searchthreads", reply)) {
+		options->search_threads = atoi(reply);
+		EnableWindow(hctrl, 1);
+
+		/* Enable IDC_CPUS_EDIT control. */
+		if (enginecommand("get cpus", reply)) {
+			hctrl = GetDlgItem(hwnd, IDC_CPUS_EDIT); 
+			EnableWindow(hctrl, 1);
+			SetDlgItemText(hwnd, IDC_CPUS_EDIT, (LPSTR)reply);
+		}
+
+		for (i = 0; i < ARRAY_SIZE(thread_limits); ++i) {
+			sprintf(buf, "%d", thread_limits[i]);
+	        SendDlgItemMessage(hwnd, IDC_MAX_SEARCH_THREADS_COMBO, CB_ADDSTRING, 0, (LPARAM)(LPCTSTR)buf);
+
+			/* Set the initial selection. */
+			if (thread_limits[i] == options->search_threads)
+				SendDlgItemMessage(hwnd, IDC_MAX_SEARCH_THREADS_COMBO, CB_SETCURSEL, i, 0);
+		}
+	}
+	else {
+		EnableWindow(hctrl, 0);
+
+		/* Disable IDC_CPUS_EDIT control. */
+		hctrl = GetDlgItem(hwnd, IDC_CPUS_EDIT); 
+		EnableWindow(hctrl, 0);
+	}
+
+	return(1);
+}
+
+
+/*
+ * The user OK'd out of the dialog, so read the settings from the controls
+ * and send any changed settings to the engine.
+ */
+int get_more_engine_options_from_dialog(HWND hwnd, MORE_ENGINE_OPTIONS *options)
+{
+	HWND hctrl;	
+	LRESULT status;
+
+	/* Get the wld enable checkbox setting. */
+	hctrl = GetDlgItem(hwnd, IDC_WLD_ENAB_CHECK);
+	status = SendMessage(hctrl, BM_GETCHECK, 0, 0); 
+	if (status == BST_CHECKED)
+		options->wld_egdb_enable = 1;
+	else if (status == BST_UNCHECKED)
+		options->wld_egdb_enable = 0;
+
+	/* Get the wld directory text box string. */
+	hctrl = GetDlgItem(hwnd, IDC_WLD_DIR_EDIT);
+	SendMessage(hctrl, WM_GETTEXT, sizeof(options->wld_directory), (LPARAM)options->wld_directory); 
+
+	/* Get the 'max pieces' setting. */
+	status = SendDlgItemMessage(hwnd, IDC_MAX_PIECES_COMBO, CB_GETCURSEL, 0, 0);
+	if (status >= 0)
+		options->max_dbpieces = limit_pieces[status];
+
+	/* Get the mtc enable checkbox setting. */
+	hctrl = GetDlgItem(hwnd, IDC_MTC_ENAB_CHECK);
+	status = SendMessage(hctrl, BM_GETCHECK, 0, 0); 
+	if (status == BST_CHECKED)
+		options->mtc_egdb_enable = 1;
+	else if (status == BST_UNCHECKED)
+		options->mtc_egdb_enable = 0;
+
+	/* Get the mtc directory text box string. */
+	hctrl = GetDlgItem(hwnd, IDC_MTC_DIR_EDIT);
+	SendMessage(hctrl, WM_GETTEXT, sizeof(options->mtc_directory), (LPARAM)options->mtc_directory); 
+
+	/* Get the bookfile text box setting. */
+	hctrl = GetDlgItem(hwnd, IDC_BOOKFILE_EDIT);
+	SendMessage(hctrl, WM_GETTEXT, sizeof(options->book_filename), (LPARAM)options->book_filename);
+
+	/* Get the max search threads combo box setting. */
+	status = SendDlgItemMessage(hwnd, IDC_MAX_SEARCH_THREADS_COMBO, CB_GETCURSEL, 0, 0);
+	if (status >= 0)
+		options->search_threads = thread_limits[status];
+
+	return(1);
+}
+
+
+int set_more_engine_options(HWND hwnd, MORE_ENGINE_OPTIONS *old_options, MORE_ENGINE_OPTIONS *new_options)
+{
+	char command[MAX_PATH + 50], reply[ENGINECOMMAND_REPLY_SIZE];
+
+	/* See if max_dbpieces changed. */
+	if (new_options->max_dbpieces != old_options->max_dbpieces) {
+		sprintf(command, "set max_dbpieces %d", new_options->max_dbpieces);
+		enginecommand(command, reply);
+	}
+
+	/* See if the wld_directory changed. */
+	if (strcmp(new_options->wld_directory, old_options->wld_directory)) {
+		sprintf(command, "set dbpath %s", new_options->wld_directory);
+		enginecommand(command, reply);
+	}
+
+	/* See if the mtc_directory changed. */
+	if (strcmp(new_options->mtc_directory, old_options->mtc_directory)) {
+		sprintf(command, "set mtcpath %s", new_options->mtc_directory);
+		enginecommand(command, reply);
+	}
+
+	/* See if the bookfile changed. */
+	if (strcmp(new_options->book_filename, old_options->book_filename)) {
+		sprintf(command, "set bookfile %s", new_options->book_filename);
+		enginecommand(command, reply);
+	}
+
+	/* See if enable_wld changed. */
+	if (new_options->wld_egdb_enable != old_options->wld_egdb_enable) {
+		sprintf(command, "set enable_wld %d", new_options->wld_egdb_enable);
+		enginecommand(command, reply);
+	}
+
+	/* See if enable_mtc changed. */
+	if (new_options->mtc_egdb_enable != old_options->mtc_egdb_enable) {
+		sprintf(command, "set enable_mtc %d", new_options->mtc_egdb_enable);
+		enginecommand(command, reply);
+	}
+
+	/* See if search_threads changed. */
+	if (new_options->search_threads != old_options->search_threads) {
+		sprintf(command, "set searchthreads %d", new_options->search_threads);
+		enginecommand(command, reply);
+	}
+	return(1);
+}
+
 
 BOOL CALLBACK EngineDialogFunc(HWND hdwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
@@ -919,10 +1341,8 @@ BOOL CALLBACK EngineDialogFunc(HWND hdwnd, UINT message, WPARAM wParam, LPARAM l
 						SendDlgItemMessage(hdwnd, IDC_SECONDARY,LB_GETTEXT,i,(LPARAM)gCBoptions.secondaryenginestring);
 					
 					// if we have a new engine, call initengines.
-					if(	strcmp(gCBoptions.primaryenginestring,oldengine1) !=0 || 
-						strcmp(gCBoptions.secondaryenginestring,oldengine2) !=0 )
-						
-					initengines();
+					if (strcmp(gCBoptions.primaryenginestring,oldengine1) != 0 || strcmp(gCBoptions.secondaryenginestring,oldengine2) != 0)
+						initengines();
 					SetCurrentDirectory(CBdirectory);
 	
 					EndDialog(hdwnd,0);

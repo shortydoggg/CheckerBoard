@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include <time.h>
 #include <commctrl.h>
+#include <shlwapi.h>
+#include <shlobj.h>
 #include "standardheader.h"
 #include "CBstructs.h"
 #include "CBconsts.h"
@@ -285,28 +287,26 @@ void setmenuchecks(struct CBoptions *CBoptions, HMENU hmenu)
 
 
 void CBlog(char *str)
-	{
-	extern char *CBdirectory; // UGLY - where are we getting this from?
-
-	// ugly - where is cblogfile??
-	
+{
+	TCHAR path[MAX_PATH];
 
 	// open a log file on startup
-	if(cblogfile == NULL)
-		{
-		SetCurrentDirectory(CBdirectory);
-		cblogfile = fopen("CBlog.txt","w");
-		}
+	if (cblogfile == NULL) {
+		strcpy(path, CBdocuments);
+		PathAppend(path, "CBlog.txt");
+		cblogfile = fopen(path, "w");
+	}
 
 	// the next two statements should never happen, but we check anyway.
-	if(str == NULL)
-		return;
-	if(cblogfile == NULL)
+	if (str == NULL)
 		return;
 
-	fprintf(cblogfile,"\n%s",str);
+	if (cblogfile == NULL)
+		return;
+
+	fprintf(cblogfile, "\n%s", str);
 	fflush(cblogfile);
-	}
+}
 
 
 int getopening(struct CBoptions *CBoptions)
@@ -423,10 +423,12 @@ int FENtoboard8(int board[8][8], char *p, int *color, int gametype)
 	if(col == NULL)
 		return 0;
 
-	if(strcmp(col,"W")==0) 
-		*color=WHITE;
-	else 
-		*color=BLACK;
+	if (toupper(col[0]) == 'W')
+		*color = WHITE;
+	else if (toupper(col[0]) == 'B')
+		*color = BLACK;
+	else
+		return(0);
 	
 	/* parse position: get white and black strings */
 	
@@ -472,7 +474,7 @@ int FENtoboard8(int board[8][8], char *p, int *color, int gametype)
 		/* While there are tokens in "string" */
 		/* a token might be 18, or 18K */
 		piece = WHITE|MAN;
-		if(token[0] == 'K')
+		if(toupper(token[0]) == 'K')
 			{
 			piece = WHITE|KING;
 			token++;
@@ -491,7 +493,7 @@ int FENtoboard8(int board[8][8], char *p, int *color, int gametype)
 		/* While there are tokens in "string" */
 		/* a token might be 18, or 18K */
 		piece = BLACK|MAN;
-		if(token[0] == 'K')
+		if(toupper(token[0]) == 'K')
 			{
 			piece = BLACK|KING;
 			token++;
@@ -554,28 +556,44 @@ void board8toFEN(int board[8][8],char *p,int color, int gametype)
 	p[strlen(p)-1]='.';
 	}
 
-void builddb(char *str)
-	{
-	// call the db generator if there is enough free disk space
-	int error;
-	ULARGE_INTEGER FreeBytesAvailable,TotalNumberOfBytes,TotalNumberOfFreeBytes;
-	__int64 freebytes;
 
-	GetDiskFreeSpaceEx(NULL,&FreeBytesAvailable,&TotalNumberOfBytes,&TotalNumberOfFreeBytes);
-	
-	freebytes = (__int64)(FreeBytesAvailable.LowPart) + (((__int64)FreeBytesAvailable.HighPart)<<32);
-
-	if(freebytes < (DWORD64)220000000)
-		{
-		(str,"not enough free disk space for this operation");
-		return;
-		}
-	else
-		sprintf(str,"There is enough free disk space (about %I64i MB) - building database...", freebytes/1024/1024);
-
-	error=(int) ShellExecute(NULL,"open","db\\dbgen.bat",NULL,NULL,SW_SHOW);
-	if(error<=32)
-		sprintf(str,"error: %i",error);
-	
-	return;	
+/*
+ * Return true if the string looks like a fen position.
+ */
+int is_fen(char *buf)
+{
+	while (*buf) {
+		if (isspace(*buf))
+			++buf;
+		else if (*buf == '"')
+			++buf;
+		else
+			break;
 	}
+	if ((toupper(*buf) == 'B' || toupper(*buf) == 'W') && buf[1] == ':')
+		return(1);
+	else
+		return(0);
+}
+
+
+/*
+ * Separate the filename from the path.
+ * Return 0 on success, 1 if no separators are found.
+ */
+int extract_path(char *name, char *path)
+{
+	int i, len;
+
+	len = (int)strlen(name);
+	for (i = len - 1; i >= 0; --i) {
+		if (name[i] == '\\' || name[i] == '/')
+			break;
+	}
+
+	if (i <= 0)
+		return(1);
+	strncpy(path, name, i);
+	path[i] = 0;
+	return(0);
+}

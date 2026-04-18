@@ -34,6 +34,7 @@
 #include <commctrl.h>
 #include <stdio.h>
 #include <shellapi.h>
+#include <shlwapi.h>
 #include <commdlg.h>
 #include <time.h>
 #include <io.h>
@@ -53,6 +54,10 @@
 #include "saveashtml.h"
 #include "graphics.h"
 #include "registry.h"
+
+#ifdef _WIN64
+#pragma message("_WIN64 is defined.")
+#endif
 
 //---------------------------------------------------------------------
 // globals - should be identified in code by g_varname but aren't all...
@@ -119,7 +124,7 @@ typedef INT (WINAPI* PROC1)(int *board, int color, double maxtime, char str[1024
 typedef INT (WINAPI* PROC3)(char str[255]);/* engine name, engine help */
 typedef unsigned int (WINAPI* PROC4)(void);	  /* gametype*/
 typedef INT (WINAPI* PROC6)(int *board, int color, int from, int to, struct CBmove *move);/* islegal*/
-typedef INT (WINAPI* COMMANDPROC)(char command[256], char reply[1024]); //enginecommand
+typedef INT (WINAPI* COMMANDPROC)(char command[256], char reply[ENGINECOMMAND_REPLY_SIZE]); //enginecommand
 /* library instances for primary, secondary and analysis engines */
 HINSTANCE hinstLib=0,hinstLib1=0,hinstLib2=0;
 
@@ -155,16 +160,16 @@ char datename[256];					// date we're searching for
 char commentname[256];				// comment we're searching for
 int	searchwithposition = 0;			// search with position?
 char string[256];
-int maxX,maxY; 								// screen dimensions 
 HMENU hmenu;								// menu handle 
 double o,xmetric,ymetric;					//gives the size of the board8: one square is xmetric*ymetric 
 int dummy,x1=-1,x2=-1,y1=-1,y2=-1;
 struct CBmove m[28]; 						// movelist 
 double maxtime, incrementtime=60.0, initialtime=1200.0;				//time limit - is set by setlevel() 
-char reply[1024];			// holds reply of engine to command requests 
-char CBdirectory[256]="";	// holds the directory from where CB is started:
-char database[256]="";		// current PDN database 
-char userbookname[256]="userbook.bin";	// current userbook
+char reply[ENGINECOMMAND_REPLY_SIZE];		// holds reply of engine to command requests 
+char CBdirectory[256]="";			// holds the directory from where CB is started:
+char CBdocuments[MAX_PATH];			// CheckerBoard directory under My Documents
+char database[256]="";				// current PDN database 
+char userbookname[256];	// current userbook
 
 // the game is stored in a doubly linked list. the following 3 pointers are always
 //	valid: head, tail, current.  tail.next is always NULL, as is head.previous of course.
@@ -198,6 +203,8 @@ int re_search_ok = 0;
 char piecesetname[MAXPIECESET][256];
 int maxpieceset=0;
 CRITICAL_SECTION ani_criticalsection, engine_criticalsection;
+int	handletooltiprequest(LPTOOLTIPTEXT TTtext); 
+
 
 // checkerboard goes finite-state: it can be in one of the modes above.
 //	normal:	after the user enters a move, checkerboard starts to calculate
@@ -251,6 +258,10 @@ int WINAPI WinMain(HINSTANCE hThisInst, HINSTANCE hPrevInst,LPSTR lpszArgs, int 
 		hThisInst,								// handle of this instance of the program
 		NULL									// no additional arguments 
 		);
+
+	// load settings from the registry
+	createcheckerboard(hwnd);
+
 	// display the window 
 	ShowWindow(hwnd, SW_SHOW);
 	UpdateWindow(hwnd);
@@ -296,9 +307,6 @@ int WINAPI WinMain(HINSTANCE hThisInst, HINSTANCE hPrevInst,LPSTR lpszArgs, int 
 	// this updates the status bar and the toolbar
 	SetTimer(hwnd, 1, 100, NULL);
 
-	// load settings from the registry
-	createcheckerboard(hwnd);
-
 	// create the message loop 
 	while (GetMessage(&msg, NULL, 0, 0))
 		{	
@@ -319,7 +327,6 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 	FILE *fp;
 	LPRECT lprec;
 	int i,k,l,x,y;
-	int error;
 	char str2[256],Lstr[256];
 	char str1024[1024];
 	char *gamestring; 
@@ -329,6 +336,8 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 	RECT WinDim;
 	static int cxClient,cyClient;
 	MENUBARINFO mbi;
+	HINSTANCE hinst;
+
 	
 	switch(message) 
 		{
@@ -409,7 +418,7 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 			GetWindowRect(hwnd,&WinDim);
 			// make window quadratic
 			if((xmetric - ymetric)*8 != 0)
-				MoveWindow(hwnd,WinDim.left, WinDim.top, WinDim.right-WinDim.left, WinDim.bottom-WinDim.top + (xmetric-ymetric)*8,1);
+				MoveWindow(hwnd,WinDim.left, WinDim.top, WinDim.right-WinDim.left, WinDim.bottom-WinDim.top + (int)((xmetric-ymetric)*8),1);
 		
 			// update stretched stones etc
 			resizegraphics(hwnd);
@@ -478,7 +487,7 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 				case GAMESAVE: 
 					// show save game dialog. if OK, call 'dosave' to do the work 
 					SetCurrentDirectory(gCBoptions.userdirectory);
-					if(DialogBox(g_hInst,"IDD_SAVEGAME",hwnd,DialogFuncSavegame))
+					if (DialogBox(g_hInst, "IDD_SAVEGAME", hwnd, (DLGPROC)DialogFuncSavegame))
 						{
 						if(getfilename(filename,OF_SAVEGAME))
 							{
@@ -497,10 +506,7 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 
 				case DOSAVE:
 					// saves the game stored in GPDNgame 
-					if(CBstate == ENGINEMATCH)
-						SetCurrentDirectory(gCBoptions.matchdirectory);
-
-					fp = fopen(filename,"at+");
+					fp = fopen(filename, "at+");
 					// file with filename opened	- we append to that file
 					// filename was set by save game 
 					if(fp != NULL)
@@ -513,8 +519,6 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 							}
 						fclose(fp);
 						}
-					if(CBstate == ENGINEMATCH)
-						SetCurrentDirectory(CBdirectory);	
 					// set reindex flag
 					reindex = 1;
 					break;
@@ -529,7 +533,7 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 
 				case SELECTUSERBOOK:
 					// set user book.
-					sprintf(userbookname,"%s",CBdirectory);
+					sprintf(userbookname,"%s",CBdocuments);
 					if(getfilename(userbookname,OF_USERBOOK))
 						{
 						// load user book
@@ -644,23 +648,34 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 					break;
 
 				case GAMEPASTE:
-					// copy game string from the clipboard...
+					// copy game or fen string from the clipboard...
 					gamestring = textfromclipboard(hwnd, str);
 
 					// now that the game is in gamestring doload() on it 
-					if(gamestring != NULL)
-						{
+					if (gamestring != NULL) {
 						PostMessage(hwnd, WM_COMMAND, ABORTENGINE, 0);
-						doload(&GPDNgame, gamestring, &color, board8);
+
+						/* Detect fen or game, load it in either case. */
+						if (is_fen(gamestring)) {
+							if (!FENtoboard8(board8, gamestring, &color, GPDNgame.gametype)) {
+								doload(&GPDNgame, gamestring, &color, board8);
+								sprintf(str,"game copied");
+							}
+							else
+								sprintf(str,"position copied");
+						}
+						else {
+							doload(&GPDNgame, gamestring, &color, board8);
+							sprintf(str,"position copied");
+						}
 						free(gamestring);
 
 						// game is fully loaded, clean up 
 						updateboardgraphics(hwnd);
 						reset=1;
 						newposition=TRUE;
-						sprintf(str,"game copied");
 						PostMessage(hwnd,WM_COMMAND,GAMEINFO,0);
-						}
+					}
 					else
 						sprintf(str,"clipboard open failed");
 					break;
@@ -679,8 +694,6 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 					else
 						SendMessage(hwnd,WM_COMMAND,INTERRUPTENGINE,0);
 					x1 = -1;
-					
-						
 					break;
 
 				case INTERRUPTENGINE:
@@ -700,7 +713,7 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 
 				case MOVESBACK:	
 					// take back a move 
-					PostMessage(hwnd, WM_COMMAND, ABORTENGINE, 0);
+					abortengine();
 					if(CBstate == BOOKVIEW && userbooknum != 0)
 						{
 						if(userbookcur>0)
@@ -718,18 +731,13 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 						}
 
 					if (current->last == NULL && (CBstate == ANALYZEGAME || CBstate == ANALYZEPDN) )
-						{
 						gameover = TRUE;
-						//setenginebusy(FALSE);		// what is this here for?
-						//setanimationbusy(FALSE);	// what is this here for
-						}
-
+						
 					if (current->last != NULL)
 						{
 						current = current->last;
 						undomove(current->move, board8);
 						updateboardgraphics(hwnd);
-						// shouldnt this color thing be handled in undomove?
 						color = color^CHANGECOLOR;
 						sprintf(str,"takeback: ");
 						// and print move number and move into the status bar
@@ -752,12 +760,11 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 						if(CBstate == OBSERVEGAME)
 							PostMessage(hwnd,WM_COMMAND,INTERRUPTENGINE,0);
 						else
-							PostMessage(hwnd,WM_COMMAND,ABORTENGINE,0);
+							abortengine();
 						}
 					else 
-						{
 						sprintf(str,"Takeback not possible: you are at the start of the game!");
-						}
+						
 					newposition=TRUE;
 					reset=1;
 					break;
@@ -765,7 +772,7 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 				case MOVESFORWARD:	
 					// go forward one move 
 					// stop the engine if it is still running
-					PostMessage(hwnd, WM_COMMAND, ABORTENGINE, 0);
+					abortengine();
 
 					// if in user book mode, move to the next position in user book
 					if(CBstate == BOOKVIEW && userbooknum!=0)
@@ -859,7 +866,7 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 
 				case MOVESCOMMENT: 
 					// add a comment to the last move 
-					if(DialogBox(g_hInst,"IDD_COMMENT",hwnd,DialogFuncAddcomment));
+					if(DialogBox(g_hInst,"IDD_COMMENT",hwnd,(DLGPROC)DialogFuncAddcomment));
 					break;
 
 				case LEVELEXACT:
@@ -1021,11 +1028,11 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 					break;
 
 				case OPTIONS3MOVE:
-					DialogBox(g_hInst,"IDD_3MOVE",hwnd,ThreeMoveDialogFunc);
+					DialogBox(g_hInst,"IDD_3MOVE",hwnd,(DLGPROC)ThreeMoveDialogFunc);
 					break;
 
 				case OPTIONSDIRECTORIES:
-					DialogBox(g_hInst,"IDD_DIRECTORIES",hwnd,DirectoryDialogFunc);
+					DialogBox(g_hInst,"IDD_DIRECTORIES",hwnd,(DLGPROC)DirectoryDialogFunc);
 					break;
 
 				case OPTIONSUSERBOOK:
@@ -1205,14 +1212,14 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 
 				case ENGINESELECT:	
 					// select engines
-					DialogBox(g_hInst,"IDD_DIALOGENGINES",hwnd,EngineDialogFunc);
+					DialogBox(g_hInst,"IDD_DIALOGENGINES",hwnd,(DLGPROC)EngineDialogFunc);
 					break;
 
 				case ENGINEOPTIONS:
 					// select engine options
 					oldengine = currentengine;
-					DialogBox(g_hInst,"IDD_ENGINEOPTIONS",hwnd,EngineOptionsFunc);
-					currentengine = oldengine;
+					DialogBox(g_hInst,"IDD_ENGINEOPTIONS",hwnd,(DLGPROC)EngineOptionsFunc);
+					setcurrentengine(oldengine);
 					enginecommand("get book",Lstr);
 					togglebook = atoi(Lstr);
 					break;
@@ -1387,16 +1394,16 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 
 				case HELPABOUT:    
 					// display a an about box
-					DialogBox(g_hInst,"IDD_CBABOUT",hwnd,AboutDialogFunc);
+					DialogBox(g_hInst,"IDD_CBABOUT",hwnd,(DLGPROC)AboutDialogFunc);
 					break;
 
 				case HELPHOMEPAGE:
 					// open the checkerboard homepage with default htm viewer
-					error=(int)ShellExecute(NULL,"open","www.fierz.ch/checkers.htm",NULL,NULL,SW_SHOW);
+					hinst = ShellExecute(NULL,"open","www.fierz.ch/checkers.htm",NULL,NULL,SW_SHOW);
 					break;
 
 				case CM_ENGINECOMMAND:
-					DialogBox(g_hInst,"IDD_ENGINECOMMAND",hwnd,DialogFuncEnginecommand);
+					DialogBox(g_hInst,"IDD_ENGINECOMMAND",hwnd,(DLGPROC)DialogFuncEnginecommand);
 					break;
 
 				case CM_ADDCOMMENT:
@@ -1420,12 +1427,6 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 					testset_number = 0;
 					changeCBstate(CBstate,RUNTESTSET);
 					break;
-
-				case CM_BUILDEGDB:
-					// build six-piece db with dbgen.bat
-					if(MessageBox(hwnd,"Building the 6-piece database will\ntake a while (4 hours on a fast computer).\nDo you wish to coninue?","Confirm database build",MB_OKCANCEL|MB_ICONQUESTION) == IDOK)
-						builddb(str);
-					break;
 				}
 			break;
 
@@ -1439,15 +1440,7 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 			gCBoptions.window_height = windowrect.bottom - windowrect.top;
 
 			// save settings 
-			//SetCurrentDirectory(CBdirectory);
 			savesettings(&gCBoptions);
-
-			//Shell_NotifyIcon(NIM_DELETE,&pnid); // remove tray icon 
-			// delete DCs 
-			/*DeleteDC(memdc);                     
-			DeleteDC(bgdc);
-			DeleteDC(bmpdc);
-			DeleteDC(stretchdc);*/
 
 			// unload engines
 			fFreeResult = FreeLibrary(hinstLib1);
@@ -1547,9 +1540,6 @@ int SetMenuLanguage(int language)
 	if(fileispresent("db\\db6.cpr"))
 		DeleteMenu(hmenu, 8, MF_BYPOSITION);
 
-#ifndef EDITBOX
-//	DeleteMenu(hmenu, OPTIONSCOMMENTWINDOW, MF_BYCOMMAND);
-#endif
 	DeleteMenu(hmenu,LEVELINCREMENT,MF_BYCOMMAND);
 	DeleteMenu(hmenu,LEVELADDTIME,MF_BYCOMMAND);
 	DeleteMenu(hmenu,LEVELSUBTRACTTIME,MF_BYCOMMAND);
@@ -1854,6 +1844,7 @@ int handle_lbuttondown(int x, int y)
 int handletimer(void)
 	{
 	static char oldstr[1024];
+	char filename[MAX_PATH];
 	static int oldcolor;
 	static int oldtogglemode;
 	static int oldtogglebook;
@@ -1871,7 +1862,9 @@ int handletimer(void)
 			{
 			if(strchr(str,ch) != NULL)
 				{
-				Lfp = fopen("testlog.txt","a");
+				strcpy(filename, CBdocuments);
+				PathAppend(filename, "testlog.txt");
+				Lfp = fopen(filename, "a");
 				if(Lfp != NULL)
 					{
 					fprintf(Lfp,"%s\n",str);
@@ -1999,7 +1992,7 @@ int handlegamereplace(int replaceindex, char *databasename)
 	int i;
 	int filesize = getfilesize(databasename);
 	// give the user a chance to save new results / names 
-	if(DialogBox(g_hInst,"IDD_SAVEGAME",hwnd,DialogFuncSavegame))
+	if(DialogBox(g_hInst,"IDD_SAVEGAME",hwnd,(DLGPROC)DialogFuncSavegame))
 		{
 		// if the user gives his ok, replace: 
 
@@ -2244,7 +2237,7 @@ int selectgame(int how)
 			{
 			// this dialog box sets the variables 
 			// <playername>, <eventname> and <datename>
-			if(DialogBox(g_hInst,"IDD_SEARCHMASK",hwnd,DialogSearchMask) == 0)
+			if(DialogBox(g_hInst,"IDD_SEARCHMASK",hwnd,(DLGPROC)DialogSearchMask) == 0)
 				return 0;
 			}
 
@@ -2511,7 +2504,7 @@ int selectgame(int how)
 		}			
 
 	// headers loaded into 'data', display load game dialog 
-	if(DialogBox(g_hInst,"IDD_SELECTGAME",hwnd,DialogFuncSelectgame))
+	if(DialogBox(g_hInst,"IDD_SELECTGAME",hwnd,(DLGPROC)DialogFuncSelectgame))
 		{
 		// a game was selected; with index <gameindex> in the dialog box 
 		sprintf(str,"gameindex is %i",gameindex);
@@ -2653,7 +2646,7 @@ void add_piecesets_to_menu(HMENU hmenu)
 
 		if(FileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY )
 			{
-			if(strlen(FileData.cFileName)>3)
+			if(strlen(FileData.cFileName)>3 && FileData.cFileName[0] != '.')	/* Exclude ".svn" directory. */
 				{
 				AppendMenu(hsubpop,MF_STRING,PIECESET+i,FileData.cFileName);
 				sprintf(piecesetname[i],"%s",FileData.cFileName);
@@ -2687,11 +2680,6 @@ int createcheckerboard(HWND hwnd)
 	GetClientRect(hwnd, &rect);
 	PostMessage(hwnd, WM_SIZE, 0, MAKELPARAM(rect.right-rect.left, rect.bottom-rect.top));
 
-	// get screen coordinates 
-	// TODO: remove this
-	maxX = GetSystemMetrics(SM_CXSCREEN);
-	maxY = GetSystemMetrics(SM_CYSCREEN);
-
 	initgraphics(hwnd);
 	
 	//initialize linked list which stores the game
@@ -2708,15 +2696,15 @@ int createcheckerboard(HWND hwnd)
 	ccs.lpfnHook=NULL;
 	ccs.lpTemplateName=(LPSTR) NULL;
 
-
 	// load user book
+	strcpy(userbookname, CBdocuments);
+	PathAppend(userbookname, "userbook.bin");
 	fp = fopen(userbookname,"rb");
 	if(fp != 0)
 		{
 		userbooknum = fread(userbook,  sizeof(struct userbookentry),MAXUSERBOOK,fp);
 		fclose(fp);
 		}
-
 
 	setmenuchecks(&gCBoptions, hmenu);
 	// set the level 
@@ -2797,8 +2785,7 @@ int createcheckerboard(HWND hwnd)
 	InitCheckerBoard(board8);
 
 	// print version number in status bar
-	sprintf(str2,"%.3f",VERSION);
-	sprintf(str,"This is CheckerBoard %s, Kuesnacht, July 14th 2008",str2);
+	sprintf(str, "This is CheckerBoard %s, Kuesnacht, May 3, 2009", VERSION);
 	return 1;
 	}
 
@@ -2807,8 +2794,11 @@ int showfile(char *filename)
 	{
 	// opens a file with the default viewer, e.g. a html help file
 	int error;
+	HINSTANCE hinst;
 
-	error=(int)ShellExecute(NULL,"open",filename,NULL,NULL,SW_SHOW);
+
+	hinst = ShellExecute(NULL,"open",filename,NULL,NULL,SW_SHOW);
+	error = PtrToLong(hinst);
 
 	sprintf(str,"CheckerBoard could not open\nthe file %s\nError code %i",filename, error);
 	if(error<32)
@@ -3116,14 +3106,20 @@ DWORD ThreadFunc(LPVOID param)
 			break;
 
 		case ENGINEMATCH:
-			Lfp=fopen("matchlog.txt","a");
-			enginename(Lstr);
-			if(Lfp != NULL)
-				{
-				fprintf(Lfp,"\n%s played %s",Lstr,PDN);
-				fprintf(Lfp,"\nanalysis: %s",str);
-				fclose(Lfp);
-				}
+			{
+				filename[MAX_PATH];
+
+				strcpy(filename, gCBoptions.matchdirectory);
+				PathAppend(filename, "matchlog.txt");
+				Lfp=fopen(filename,"a");
+				enginename(Lstr);
+				if(Lfp != NULL)
+					{
+					fprintf(Lfp,"\n%s played %s",Lstr,PDN);
+					fprintf(Lfp,"\nanalysis: %s",str);
+					fclose(Lfp);
+					}
+			}
 			break;
 		}
 
@@ -3142,7 +3138,7 @@ int changeCBstate(int oldstate, int newstate)
 	// when we change the state, we first of all make sure that the
 	// engine is not running
 	PostMessage(hwnd,WM_COMMAND,ABORTENGINE,0);
-	
+
 	// toolbar buttons
 	if(oldstate == BOOKVIEW)
 		SendMessage(tbwnd, TB_CHECKBUTTON, (WPARAM)BOOKMODE_VIEW,MAKELONG(0,0));
@@ -3204,6 +3200,9 @@ DWORD AutoThreadFunc(LPVOID param)
 	char Lstr[256];
 	char windowtitle[256];
 	char analysisfilename[256];
+	char testlogname[MAX_PATH];
+	char testsetname[MAX_PATH];
+	char statsfilename[MAX_PATH];
 	static char matchlogstring[65536];	// large string which holds the output which we write to match_progress.txt
 	static int oldengine;
 	FILE *Lfp;
@@ -3249,21 +3248,25 @@ DWORD AutoThreadFunc(LPVOID param)
 				// sleep for 0.2 seconds to allow handletimer() to update the testlog file
 				Sleep(200);
 				// create or update testlog file
+				strcpy(testlogname, CBdocuments);
+				PathAppend(testlogname, "testlog.txt");
 				if(testset_number == 0)
 					{
 					// testset start: clear file testlog.txt
-					Lfp=fopen("testlog.txt","w");
+					Lfp=fopen(testlogname,"w");
 					fclose(Lfp);
 					}
 				else
 					// write analysis
-					logtofile("testlog.txt","\n\n", "a");
+					logtofile(testlogname, "\n\n", "a");
 
 				// load the next position from the test set
-				Lfp = fopen("testset.txt", "r");
+				strcpy(testsetname, CBdocuments);
+				PathAppend(testsetname, "testset.txt");
+				Lfp = fopen(testsetname, "r");
 				if(Lfp == NULL)
 					{
-					sprintf(str,"could not find testset.txt");
+					sprintf(str,"could not find %s", testsetname);
 					break;
 					}
 
@@ -3280,7 +3283,7 @@ DWORD AutoThreadFunc(LPVOID param)
 
 				// write FEN in testlog
 				sprintf(str,"#%i: %s", testset_number, FEN);
-				logtofile("testlog.txt", str, "a");
+				logtofile(testlogname, str, "a");
 
 				// convert position to internal board
 				FENtoboard8(board8, FEN, &color,GPDNgame.gametype);
@@ -3344,7 +3347,10 @@ DWORD AutoThreadFunc(LPVOID param)
 					gameover=FALSE;
 					changeCBstate(CBstate,NORMAL);
 					sprintf(str,"Game analysis finished!");
-					makeanalysisfile("analysis\\analysis.htm");
+					strcpy(analysisfilename, CBdocuments);
+					PathAppend(analysisfilename, "analysis");
+					PathAppend(analysisfilename, "analysis.htm");
+					makeanalysisfile(analysisfilename);
 					break;
 					}
 				if(currentengine!=1) 
@@ -3354,10 +3360,13 @@ DWORD AutoThreadFunc(LPVOID param)
 				Sleep(SLEEPTIME);
 
 				// start analysis logfile - overwrite anything old 
-				Lfp = fopen("analysis.txt","w");
+				strcpy(analysisfilename, CBdocuments);
+				PathAppend(analysisfilename, "analysis.txt");
+				Lfp = fopen(analysisfilename,"w");
 				fclose(Lfp);
 				sprintf(str,"played in game: 1. %s",current->PDN);
-				logtofile("analysis.txt", str, "a");
+				logtofile(analysisfilename, str, "a");
+
 				PostMessage(hwnd,WM_COMMAND,MOVESPLAY,0);
 				setenginestarting(TRUE);
 
@@ -3387,7 +3396,9 @@ DWORD AutoThreadFunc(LPVOID param)
 					{
 					gamenumber = 1;
 					startmatch = FALSE;
-					sprintf(analysisfilename,"analysis\\analysis1.htm");
+					strcpy(analysisfilename, CBdocuments);
+					PathAppend(analysisfilename, "analysis");
+					PathAppend(analysisfilename, "analysis1.htm");
 					}
 
 				if(gameover == TRUE)
@@ -3398,7 +3409,7 @@ DWORD AutoThreadFunc(LPVOID param)
 					// get number of next game; loadnextgame returns 0 if 
 					// there is no further game.
 					gamenumber = loadnextgame(); 
-					sprintf(analysisfilename,"analysis\\analysis%i.htm", gamenumber);
+					sprintf(analysisfilename, "%s\\analysis\\analysis%i.htm", CBdocuments, gamenumber);
 					}
 
 				if(gamenumber == 0) 
@@ -3464,7 +3475,9 @@ DWORD AutoThreadFunc(LPVOID param)
 					blackwins=0;
 					blacklosses=0;
 					// check to see if a stats.txt file is here, and if yes, continue the match 
-					Lfp = fopen("stats.txt","r");
+					strcpy(statsfilename, gCBoptions.matchdirectory);
+					PathAppend(statsfilename, "stats.txt");
+					Lfp = fopen(statsfilename,"r");
 					if(Lfp != NULL)
 						{
 						// stats.txt exists 
@@ -3477,7 +3490,9 @@ DWORD AutoThreadFunc(LPVOID param)
 						fclose(Lfp);
 
 						// read match-progress file 	// TODO: this should be superfluous, write directly to file...
-						Lfp = fopen("match_progress.txt","r");
+						strcpy(statsfilename, gCBoptions.matchdirectory);
+						PathAppend(statsfilename, "match_progress.txt");
+						Lfp = fopen(statsfilename,"r");
 						if(Lfp!=NULL)
 							{
 							while(!feof(Lfp))
@@ -3527,11 +3542,6 @@ DWORD AutoThreadFunc(LPVOID param)
 							sprintf(GPDNgame.white,"%s",engine1);
 							}
 						sprintf(GPDNgame.resultstring,"?");
-						// we write the result of the match in a file 
-						sprintf(str,"%s says: game %i", Lstr, gamenumber);
-						logtofile("result.txt", str, "a");
-						//fprintf(Lfp," (ACF #%i)",op+1);
-
 						if(!((gamenumber-1) % 20))
 							{
 							if(gamenumber != 1)
@@ -3557,19 +3567,10 @@ DWORD AutoThreadFunc(LPVOID param)
 						if(!(gamenumber%2)) 
 							strcat(matchlogstring,"  ");
 
-						// write the last output string to file 
-						/*
-						currentengine^=3;
-						if(currentengine==1) 
-							sprintf(Lestr2,"%s",str);
-						else 
-							sprintf(Lestr1,"%s",str);
-						// and write the last 2 outputs in the file 
-						sprintf(str,"  last outputs: \n  %s\n  %s\n",Lestr1,Lestr2);
-						logtofile("result.txt", str, "a");*/
-
 						// write match statistics 
-						Lfp = fopen("stats.txt","w");
+						strcpy(statsfilename, gCBoptions.matchdirectory);
+						PathAppend(statsfilename, "stats.txt");
+						Lfp = fopen(statsfilename,"w");
 						if(Lfp != NULL)
 							{
 							fprintf(Lfp,"%s - %s",engine1, engine2);
@@ -3579,16 +3580,19 @@ DWORD AutoThreadFunc(LPVOID param)
 							}
 
 						// write match_progress.txt file
-						logtofile("match_progress.txt", matchlogstring,"w");
+						strcpy(statsfilename, gCBoptions.matchdirectory);
+						PathAppend(statsfilename, "match_progress.txt");
+						logtofile(statsfilename, matchlogstring, "w");
 
 						// save the game
 						if(iselevenman == 1)
 							sprintf(GPDNgame.event,"11-man #%i",(gamenumber-1)/2+1);
 						else
 							sprintf(GPDNgame.event,"ACF #%i",op+1);
-						// dosave expects a fully initialized GPDNgame structure and
-						// a pdn filename in filename 
-						sprintf(filename,"match.pdn");
+
+						// dosave expects a fully initialized GPDNgame structure
+						strcpy(filename, gCBoptions.matchdirectory);
+						PathAppend(filename, "match.pdn");
 						SendMessage(hwnd,WM_COMMAND,DOSAVE,0);
 
 						Sleep(SLEEPTIME);
@@ -3615,7 +3619,6 @@ DWORD AutoThreadFunc(LPVOID param)
 					gamenumber++;
 
 					sprintf(str,"gamenumber is %i\n", gamenumber);
-					//logtofile("enginematch.txt",str,"a");
 
 					if(matchcontinues == 0)				
 						{
@@ -3794,7 +3797,7 @@ int makeanalysisfile(char *filename)
 	sprintf(titlestring,"%s - %s",GPDNgame.black, GPDNgame.white);
 
 	// print HTML head
-	fprintf(fp,"<HTML>\n<HEAD>\n<META name=\"GENERATOR\" content=\"CheckerBoard 1.65\">\n<TITLE>%s</TITLE></HEAD>",titlestring);
+	fprintf(fp,"<HTML>\n<HEAD>\n<META name=\"GENERATOR\" content=\"CheckerBoard %s\">\n<TITLE>%s</TITLE></HEAD>", VERSION, titlestring);
 
 	// print HTML body
 	fprintf(fp,"<BODY><H3>");
@@ -3809,7 +3812,7 @@ int makeanalysisfile(char *filename)
 	CPUinfo(CPUinfostring);
 	
 	fprintf(fp, "\nAnalysis by %s at %is/move on %s", s, leveltime[gCBoptions.level], CPUinfostring);
-	fprintf(fp,"\n<BR>\ngenerated with <A HREF=\"http://www.fierz.ch/checkers.htm\">CheckerBoard 1.651</A><P>");
+	fprintf(fp,"\n<BR>\ngenerated with <A HREF=\"http://www.fierz.ch/checkers.htm\">CheckerBoard %s</A><P>", VERSION);
 
 	// print PDN and analysis
 	fprintf(fp,"\n<TABLE cellspacing=\"0\" cellpadding=\"3\">");
@@ -3891,7 +3894,7 @@ int gametype(void)
 	{
 	// returns the game type which the current engine plays
 	// if the engine has no game type associated, it will return 21 for english checkers
-	char reply[1024];
+	char reply[ENGINECOMMAND_REPLY_SIZE];
 	char command[256];
 
 	sprintf(reply,"");
@@ -3905,7 +3908,7 @@ int gametype(void)
 	}
 
 
-int enginecommand(char command[256], char reply[1024])
+int enginecommand(char command[256], char reply[ENGINECOMMAND_REPLY_SIZE])
 // sends a command to the current engine, defined with the currentengine variable
 // wraps a 'safety layer around calls to engine command by checking if this is supported */
 	{
@@ -3983,18 +3986,19 @@ int undomove(struct CBmove m,int b[8][8])
 	// take back move m on board b 
 	int i,x,y;
 
-	x=m.to.x;y=m.to.y;
-	b[x][y]=0;
+	x = m.to.x;
+	y = m.to.y;
+	b[x][y] = 0;
 
-	x=m.from.x;y=m.from.y;
-	b[x][y]=m.oldpiece;
+	x = m.from.x;
+	y = m.from.y;
+	b[x][y] = m.oldpiece;
 
-
-	for(i=0;i<m.jumps;i++)
+	for(i=0; i<m.jumps; i++)
 		{
-		x=m.del[i].x;
-		y=m.del[i].y;
-		b[x][y]=m.delpiece[i];
+		x = m.del[i].x;
+		y = m.del[i].y;
+		b[x][y] = m.delpiece[i];
 		}
 	return 1;
 	}
@@ -4160,10 +4164,10 @@ int appendmovetolist(struct CBmove m)
 	return 1;
 	}
 
-
 int getfilename(char filename[255], int what)
 	{
 	OPENFILENAME of;
+	char dir[MAX_PATH];
 
 	sprintf(filename,"");
 	(of).lStructSize = sizeof(OPENFILENAME);
@@ -4177,7 +4181,8 @@ int getfilename(char filename[255], int what)
 	(of).nMaxFile = MAX_PATH;
 	(of).lpstrFileTitle = NULL;
 	(of).nMaxFileTitle = 0;
-	(of).lpstrInitialDir = gCBoptions.userdirectory;
+	(of).lpstrInitialDir = gCBoptions.userdirectory; // this is the CheckerBoard\games directory; default
+												     // other directories are set as needed
 	(of).lpstrTitle = NULL;
 	(of).Flags = OFN_HIDEREADONLY|OFN_PATHMUSTEXIST;
 	(of).nFileOffset = 0;
@@ -4206,6 +4211,8 @@ int getfilename(char filename[255], int what)
 		{
 		(of).lpstrTitle="Select filename of HTML output";
 		(of).lpstrFilter="HTML files *.htm\0 *.htm\0 all files *.*\0 *.*\0\0";
+		sprintf(dir, "%s\\games", CBdocuments);
+		(of).lpstrInitialDir = dir;
 		if(GetSaveFileName(&of))
 			return 1;
 		}
@@ -4214,10 +4221,20 @@ int getfilename(char filename[255], int what)
 		{
 		(of).lpstrTitle= "Select the user book to use";
 		(of).lpstrFilter="user book files *.bin\0 *.bin\0 all files *.*\0 *.*\0\0";
-		(of).lpstrInitialDir = CBdirectory;
+		(of).lpstrInitialDir = CBdocuments;
 		if(GetSaveFileName(&of))
 			return 1;
 		}
+
+	if (what == OF_BOOKFILE) {
+		(of).lpstrTitle= "Select the opening book filename";
+		(of).lpstrFilter="user book files *.odb\0 *.odb\0 all files *.*\0 *.*\0\0";
+		sprintf(dir, "%s\\engines", CBdirectory);
+		(of).lpstrInitialDir = dir;
+		if (GetOpenFileName(&of))
+			return 1;
+	}
+
 	return 0;
 	}
 
@@ -4229,16 +4246,16 @@ void pdntogame(int startposition[8][8], int startcolor)
 
 	/* called by loadgame and gamepaste */
 
-	int col=BLACK;
+	int col = BLACK;
 	int b8[8][8];
 	int from, to;
 	struct CBmove legal;
 
 	/* set the starting values */
-	col=startcolor;
+	col = startcolor;
 	memcpy(b8,startposition,64*sizeof(int));
 
-	current=head;
+	current = head;
 	// TODO - this seems to move one too far - no PDN attached here on the last move!
 	while( current->next !=NULL)
 		{
@@ -4608,10 +4625,10 @@ void initengines(void)
 	// first, primary engine
 	// is there a way to check whether a module is already loaded?
 	primaryhandle = GetModuleHandle(gCBoptions.primaryenginestring);
-	sprintf(Lstr,"handle = %i (primary engine)",(int)primaryhandle);
+	sprintf(Lstr,"handle = %i (primary engine)",PtrToLong(primaryhandle));
 	CBlog(Lstr);
 	secondaryhandle = GetModuleHandle(gCBoptions.secondaryenginestring);
-	sprintf(Lstr,"secondaryhandle = %i (secondary engine)",(int)secondaryhandle);
+	sprintf(Lstr,"secondaryhandle = %i (secondary engine)",PtrToLong(secondaryhandle));
 	CBlog(Lstr);
 
 	// now, if one of the two handles, primaryhandle or secondaryhandle is
@@ -4704,8 +4721,10 @@ void initengines(void)
 	setcurrentengine(1);
 
 	// reset game if an engine of different game type was selected!
-	if(gametype() != GPDNgame.gametype)
+	if(gametype() != GPDNgame.gametype) {
 		PostMessage(hwnd,(UINT)WM_COMMAND,(WPARAM)GAMENEW,(LPARAM)0);
+		PostMessage(hwnd, (UINT)WM_SIZE, (WPARAM) 0, (LPARAM) 0);
+	}
 
 	// reset the directory to the CB directory
 	SetCurrentDirectory(CBdirectory);
@@ -4845,6 +4864,30 @@ int getenginebusy(void)
 	LeaveCriticalSection(&engine_criticalsection);
 	return returnvalue;
 	}
+
+/*
+ * Tell engine to abort searching immediately.
+ * Wait a maximum of 1 second for the engine to finish aborting.
+ */
+void abortengine()
+{
+	clock_t t0;
+
+	if (!getenginebusy())
+		return;
+
+	abortcalculation = 1;
+	playnow = 1;
+
+	t0 = clock();
+	while (getenginebusy()) {
+		Sleep(10);
+		if ((int)(clock() - t0) > 1000)
+			break;
+	}
+}
+
+
 int getanimationbusy(void)
 	{
 	int returnvalue;

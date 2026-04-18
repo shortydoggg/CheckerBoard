@@ -2,7 +2,7 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="8.00"
-	Name="checkerboard"
+	Name="checkerboard17"
 	ProjectGUID="{4B2C155D-908A-4B34-BAD7-0AA8DD036DCC}"
 	RootNamespace="checkerboard"
 	>
@@ -50,7 +50,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				PreprocessorDefinitions="WIN32,_DEBUG,_WINDOWS"
+				PreprocessorDefinitions="_DEBUG"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="1"
 				UsePrecompiledHeader="0"
@@ -59,7 +59,7 @@
 				ObjectFile=".\Debug/"
 				ProgramDataBaseFileName=".\Debug/"
 				BrowseInformation="1"
-				WarningLevel="4"
+				WarningLevel="3"
 				SuppressStartupBanner="true"
 				DebugInformationFormat="4"
 				CallingConvention="2"
@@ -78,8 +78,8 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalOptions="/MACHINE:I386"
-				AdditionalDependencies="wininet.lib comctl32.lib odbc32.lib odbccp32.lib"
-				OutputFile="checkerboard.exe"
+				AdditionalDependencies="wininet.lib comctl32.lib odbc32.lib odbccp32.lib shlwapi.lib"
+				OutputFile="checkerboard_dbg.exe"
 				LinkIncremental="2"
 				SuppressStartupBanner="true"
 				GenerateDebugInformation="true"
@@ -147,7 +147,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				PreprocessorDefinitions="WIN32,_DEBUG,_WINDOWS"
+				PreprocessorDefinitions="_DEBUG,_WINDOWS,"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="1"
 				UsePrecompiledHeader="0"
@@ -156,8 +156,9 @@
 				ObjectFile=".\Debug/"
 				ProgramDataBaseFileName=".\Debug/"
 				BrowseInformation="1"
-				WarningLevel="4"
+				WarningLevel="2"
 				SuppressStartupBanner="true"
+				Detect64BitPortabilityProblems="true"
 				DebugInformationFormat="3"
 				CallingConvention="2"
 			/>
@@ -174,8 +175,9 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="wininet.lib comctl32.lib odbc32.lib odbccp32.lib"
-				OutputFile="c:\program files (x86)\checkerboard\checkerboard64.exe"
+				AdditionalDependencies=" shlwapi.lib comctl32.lib"
+				OutputFile="c:\program files (x86)\checkerboard64\CheckerBoard64_dbg.exe"
+				Version="1.7"
 				LinkIncremental="2"
 				SuppressStartupBanner="true"
 				GenerateDebugInformation="true"
@@ -245,7 +247,7 @@
 				Name="VCCLCompilerTool"
 				InlineFunctionExpansion="1"
 				FavorSizeOrSpeed="1"
-				PreprocessorDefinitions="WIN32,NDEBUG,_WINDOWS"
+				PreprocessorDefinitions="_WINDOWS"
 				StringPooling="true"
 				RuntimeLibrary="0"
 				EnableFunctionLevelLinking="true"
@@ -273,9 +275,9 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalOptions="/MACHINE:I386"
-				AdditionalDependencies="comctl32.lib odbc32.lib odbccp32.lib wininet.lib"
-				OutputFile="c:\program files\checkerboard164\checkerboard.exe"
-				Version="1.64"
+				AdditionalDependencies="comctl32.lib odbc32.lib odbccp32.lib wininet.lib shlwapi.lib"
+				OutputFile="c:\program files (x86)\checkerboard64\CheckerBoard.exe"
+				Version="1.7"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
 				ProgramDatabaseFile=".\Release/checkerboard.pdb"
@@ -342,7 +344,7 @@
 				Name="VCCLCompilerTool"
 				InlineFunctionExpansion="1"
 				FavorSizeOrSpeed="1"
-				PreprocessorDefinitions="WIN32,NDEBUG,_WINDOWS"
+				PreprocessorDefinitions="_WINDOWS"
 				StringPooling="true"
 				RuntimeLibrary="0"
 				EnableFunctionLevelLinking="true"
@@ -352,8 +354,9 @@
 				ObjectFile=".\Release/"
 				ProgramDataBaseFileName=".\Release/"
 				BrowseInformation="1"
-				WarningLevel="3"
+				WarningLevel="2"
 				SuppressStartupBanner="true"
+				Detect64BitPortabilityProblems="true"
 				CallingConvention="2"
 			/>
 			<Tool
@@ -369,9 +372,9 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="comctl32.lib odbc32.lib odbccp32.lib wininet.lib"
-				OutputFile="c:\program files\checkerboard164\checkerboard.exe"
-				Version="1.64"
+				AdditionalDependencies=" shlwapi.lib comctl32.lib"
+				OutputFile="c:\program files (x86)\checkerboard64\CheckerBoard64.exe"
+				Version="1.7"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
 				ProgramDatabaseFile=".\Release/checkerboard.pdb"
@@ -407,13 +410,9 @@
 		</Configuration>
 		<Configuration
 			Name="Release64|Win32"
-			OutputDirectory="$(ConfigurationName)"
+			OutputDirectory="$(SolutionDir)$(ConfigurationName)"
 			IntermediateDirectory="$(ConfigurationName)"
 			ConfigurationType="1"
-			InheritedPropertySheets="$(VCInstallDir)VCProjectDefaults\UpgradeFromVC70.vsprops"
-			UseOfMFC="0"
-			ATLMinimizesCRunTimeLibraryUsage="false"
-			CharacterSet="2"
 			>
 			<Tool
 				Name="VCPreBuildEventTool"
@@ -429,53 +428,21 @@
 			/>
 			<Tool
 				Name="VCMIDLTool"
-				PreprocessorDefinitions="NDEBUG"
-				MkTypLibCompatible="true"
-				SuppressStartupBanner="true"
-				TargetEnvironment="1"
-				TypeLibraryName=".\Release/checkerboard.tlb"
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				InlineFunctionExpansion="1"
-				FavorSizeOrSpeed="1"
-				PreprocessorDefinitions="WIN32,NDEBUG,_WINDOWS"
-				StringPooling="true"
-				RuntimeLibrary="0"
-				EnableFunctionLevelLinking="true"
-				UsePrecompiledHeader="0"
-				PrecompiledHeaderFile=".\Release/checkerboard.pch"
-				AssemblerListingLocation=".\Release/"
-				ObjectFile=".\Release/"
-				ProgramDataBaseFileName=".\Release/"
-				BrowseInformation="1"
-				WarningLevel="3"
-				SuppressStartupBanner="true"
-				CallingConvention="2"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
 			/>
 			<Tool
 				Name="VCResourceCompilerTool"
-				PreprocessorDefinitions="NDEBUG"
-				Culture="2055"
 			/>
 			<Tool
 				Name="VCPreLinkEventTool"
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalOptions="/MACHINE:I386"
-				AdditionalDependencies="comctl32.lib odbc32.lib odbccp32.lib wininet.lib"
-				OutputFile="c:\program files\checkerboard164\checkerboard.exe"
-				Version="1.64"
-				LinkIncremental="1"
-				SuppressStartupBanner="true"
-				ProgramDatabaseFile=".\Release/checkerboard.pdb"
-				SubSystem="2"
-				StackReserveSize="8000000"
-				LargeAddressAware="2"
 			/>
 			<Tool
 				Name="VCALinkTool"
@@ -536,7 +503,7 @@
 				Name="VCCLCompilerTool"
 				InlineFunctionExpansion="1"
 				FavorSizeOrSpeed="1"
-				PreprocessorDefinitions="WIN32,NDEBUG,_WINDOWS"
+				PreprocessorDefinitions="NDEBUG,_WINDOWS"
 				StringPooling="true"
 				RuntimeLibrary="0"
 				EnableFunctionLevelLinking="true"
@@ -564,9 +531,9 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="comctl32.lib odbc32.lib odbccp32.lib wininet.lib"
-				OutputFile="c:\program files\checkerboard164\checkerboard64.exe"
-				Version="1.651"
+				AdditionalDependencies=" shlwapi.lib"
+				OutputFile="checkerboard64.exe"
+				Version="1.652"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
 				ProgramDatabaseFile=".\Release/checkerboard.pdb"
@@ -626,6 +593,10 @@
 			</File>
 			<File
 				RelativePath="coordinates.c"
+				>
+			</File>
+			<File
+				RelativePath=".\crc.c"
 				>
 			</File>
 			<File
@@ -691,6 +662,10 @@
 			</File>
 			<File
 				RelativePath="coordinates.h"
+				>
+			</File>
+			<File
+				RelativePath=".\crc.h"
 				>
 			</File>
 			<File

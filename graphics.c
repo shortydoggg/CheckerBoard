@@ -16,6 +16,7 @@
 #include "CBstructs.h"
 #include "CBconsts.h"
 #include "graphics.h"
+#include "checkerboard.h"
 #include "coordinates.h"
 #include "utility.h"
 #include "bmp.h"
@@ -458,8 +459,7 @@ DWORD AnimationThreadFunc(HWND hwnd)
 				else 
 					SelectObject(bmpdc, bmp_manmask);
 				// paint mask from bmpdc to memdc
-				//BitBlt(memdc,r.left,r.top,r.right,r.bottom,bmpdc,0,0,SRCAND);
-				// 128,148 is the dimension of the bitmap.
+				// 128,128 is the dimension of the bitmap.
 				// stretchblt from bmpdc to memdc
 				StretchBlt(memdc,r.left, r.top, size, size, bmpdc, 0,0,BMPSIZE,BMPSIZE,SRCAND);
 				// select bmp
@@ -473,7 +473,6 @@ DWORD AnimationThreadFunc(HWND hwnd)
 					SelectObject(bmpdc,bmp_wk);
 
 				// paint bmp
-				//BitBlt(memdc,r.left,r.top,r.right,r.bottom,bmpdc,0,0,SRCPAINT);
 				StretchBlt(memdc,r.left, r.top, size, size, bmpdc, 0,0,BMPSIZE,BMPSIZE,SRCPAINT);
 
 				InvalidateRect(hwnd,&r,0);

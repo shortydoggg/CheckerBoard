@@ -12,16 +12,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <shlwapi.h>
 #include "standardheader.h"
+#include "cbconsts.h"
 #include "CBstructs.h"
+#include "checkerboard.h"
 #include "utility.h"
 
-
-#define MAXMOVES 28
-
-
 void boardtobitboard(int board8[8][8], struct pos *p);
-
 
 /* database values */
 #define DRAW 0
@@ -74,6 +72,7 @@ int pdnfind(struct pos *p, int color, int list[MAXGAMES], RESULT *r)
 	int32 black,white,kings;
 	FILE *fp;
 	char FEN[256];
+	char filename[MAX_PATH];
 	int b[8][8];
 
 	if(positions == NULL)
@@ -87,7 +86,9 @@ int pdnfind(struct pos *p, int color, int list[MAXGAMES], RESULT *r)
 	r->loss = 0;
 	r->draw = 0;
 
-	fp = fopen("pdnfind.txt","w");
+	strcpy(filename, CBdocuments);
+	PathAppend(filename, "pdnfind.txt");
+	fp = fopen(filename,"w");
 	bitboardtoboard8(p, b);
 	board8toFEN(b, FEN, BLACK, 21);
 	fprintf(fp,"%s", FEN);
@@ -186,6 +187,7 @@ int pdnopen(char filename[256], int gametype)
 	int win=0,loss=0,draw=0,unknown=0;
 	char FEN[255];
 	char setup[255];
+	char pdnopenname[MAX_PATH];
 	int board8[8][8];
 	int filesize=0;
 	int square[32] = {SQ1, SQ2, SQ3, SQ4, SQ5, SQ6, SQ7, SQ8, SQ9, SQ10, SQ11, SQ12,
@@ -377,7 +379,9 @@ int pdnopen(char filename[256], int gametype)
 
 
 	free(buffer);
-	fp = fopen("pdnopen.txt","w");
+	strcpy(pdnopenname, CBdirectory);
+	PathAppend(pdnopenname, "pdnopen.txt");
+	fp = fopen(pdnopenname,"w");
 	fprintf(fp,"games %i positions %i",gamenumber, n);
 	fprintf(fp,"/ngames_in_pdn %i, maxpos guess %i", games_in_pdn, maxpos);
 	fclose(fp);

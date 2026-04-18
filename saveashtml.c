@@ -70,7 +70,7 @@ int saveashtml(char *filename, struct PDNgame *PDNgame)
 	movenumber++;
 	fp = fopen(filename,"w");
 
-	fprintf(fp,"<HTML>\n<HEAD>\n<META name=\"GENERATOR\" content=\"CheckerBoard 1.64\">\n<TITLE>\n");
+	fprintf(fp,"<HTML>\n<HEAD>\n<META name=\"GENERATOR\" content=\"CheckerBoard %s\">\n<TITLE>\n", VERSION);
 	fprintf(fp,"%s - %s\n</TITLE>\n", PDNgame->black, PDNgame->white);
 	fprintf(fp,"<STYLE TYPE='text/css'>\n<!--\n.move {font-weight: bold; text-decoration: none}\na.move {color:black}\n//-->\n</STYLE>");
 	fprintf(fp,"<SCRIPT language=\"JavaScript\">\n<!-- hide script\n\nvar movenumber = 0;\nchanges = new Array(%i);\nfor(i=0;i<%i;i++)\n changes[i]=0;\nsquare = new Array(%i);\nfor (i=0; i < %i; i++) {\n   square[i] = new Array(10);\n   }\n\nchangeto = new Array(%i);\nfor (i=0; i < %i; i++) {\n   changeto[i] = new Array(10);\n   }\n",maxhtml,maxhtml,maxhtml,maxhtml,maxhtml,maxhtml);
@@ -298,7 +298,9 @@ int saveashtml(char *filename, struct PDNgame *PDNgame)
 		free(gamestring);
 		}
 
-	fprintf(fp,"<P><FONT SIZE=\"-2\">\ngenerated with <A HREF=\"http://www.fierz.ch/checkers.htm\">CheckerBoard 1.641</A><br>Use the buttons below the board to move through the game or click a move in the notation to jump to that position. You can select and copy the PDN above and paste it into CheckerBoard.</FONT>");
+	fprintf(fp, "<P><FONT SIZE=\"-2\">\ngenerated with <A HREF=\"http://www.fierz.ch/checkers.htm\">CheckerBoard %s</A><br>"
+				"Use the buttons below the board to move through the game or click a move in the notation to jump to that position."
+				"You can select and copy the PDN above and paste it into CheckerBoard.</FONT>", VERSION);
 	fprintf(fp,"</TD></TR></TABLE></BODY>\n</HTML>");
 	fclose(fp);
 	sprintf(filename,"");

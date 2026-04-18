@@ -1,6 +1,6 @@
 // cb_movegen.c: generates a list of legal moves 
 
-// 	int getmovelist(int color,struct CBmove m[MAXMOVES], int b[8][8]);
+// 	getmovelist()
 //	is the only function which cb_movegen.c exports. it takes b[8][8] as
 //  board with the following representation, color to move, and returns a
 //  list of CBmoves.
