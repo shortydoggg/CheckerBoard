@@ -2,8 +2,9 @@
 //
 // 	version 1.0 was written by Martin Fierz	on															
 // 	15th february 2000	
-//  (c) 2000-2005 by Martin Fierz - all rights reserved.
-// 								m													
+//  (c) 2000-2011 by Martin Fierz - all rights reserved.
+//  contributions by Ed Gilbert are gratefully acknowledged
+// 																			
 // 	checkerboard is a graphical front-end for checkers engines. it checks	
 // 	user moves for correctness. you can save and load games. you can change 
 // 	the board and piece colors. you can change the window size. 			
@@ -16,6 +17,7 @@
 //  int WINAPI enginecommand(char command[256], char reply[1024]); 
 
 
+// TODO: bug report: if you hit takeback while CB is animating a move, you get an undefined state
 
 /******************************************************************************/
 
@@ -28,6 +30,22 @@
 
 #define STRICT
 
+
+// stdafx.h : include file for standard system include files,
+// or project specific include files that are used frequently, but
+// are changed infrequently
+//
+
+#define WIN32_LEAN_AND_MEAN             // Exclude rarely-used stuff from Windows headers
+
+// C RunTime Header Files
+#include <stdlib.h>
+#include <malloc.h>
+#include <memory.h>
+#include <tchar.h>
+
+
+// TODO: reference additional headers your program requires here
 #include <windows.h>
 #include <windowsx.h>
 #include <wininet.h>
@@ -204,6 +222,7 @@ char piecesetname[MAXPIECESET][256];
 int maxpieceset=0;
 CRITICAL_SECTION ani_criticalsection, engine_criticalsection;
 int	handletooltiprequest(LPTOOLTIPTEXT TTtext); 
+void reset_current_game_pdn();
 
 
 // checkerboard goes finite-state: it can be in one of the modes above.
@@ -272,8 +291,8 @@ int WINAPI WinMain(HINSTANCE hThisInst, HINSTANCE hPrevInst,LPSTR lpszArgs, int 
 	// initialize common controls - toolbar and status bar need this 
 	iccex.dwSize = sizeof(INITCOMMONCONTROLSEX);
 	iccex.dwICC = ICC_COOL_CLASSES|ICC_BAR_CLASSES;
-	InitCommonControlsEx(&iccex);
-
+	 InitCommonControlsEx(&iccex);
+	
 	// save the instance in a global variable - the dialog boxes in dialogs.c need this
 	g_hInst = hThisInst;
 
@@ -499,9 +518,11 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 
 				case GAMESAVEASHTML:
 					// show save game dialog. if OK is selected, call 'savehtml' to do the work 
-					if(getfilename(filename,OF_SAVEASHTML))
+					if (DialogBox(g_hInst, "IDD_SAVEGAME", hwnd, (DLGPROC)DialogFuncSavegame)) {
+						if (getfilename(filename, OF_SAVEASHTML))
 						saveashtml(filename, &GPDNgame);
-					sprintf(str,"game saved as HTML!");
+						sprintf(str, "game saved as HTML!");
+					}
 					break;
 
 				case DOSAVE:
@@ -511,7 +532,7 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 					// filename was set by save game 
 					if(fp != NULL)
 						{
-						gamestring = malloc(GAMEBUFSIZE);	
+						gamestring = (char *) malloc(GAMEBUFSIZE);	
 						if(gamestring!=NULL) {
 							PDNgametoPDNstring(&GPDNgame,gamestring, "\n");
 							fprintf(fp,"%s",gamestring);
@@ -661,8 +682,10 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 								doload(&GPDNgame, gamestring, &color, board8);
 								sprintf(str,"game copied");
 							}
-							else
+							else {
+								reset_current_game_pdn();
 								sprintf(str,"position copied");
+						}
 						}
 						else {
 							doload(&GPDNgame, gamestring, &color, board8);
@@ -732,12 +755,13 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 
 					if (current->last == NULL && (CBstate == ANALYZEGAME || CBstate == ANALYZEPDN) )
 						gameover = TRUE;
-						
+
 					if (current->last != NULL)
 						{
 						current = current->last;
 						undomove(current->move, board8);
 						updateboardgraphics(hwnd);
+						// shouldnt this color thing be handled in undomove?
 						color = color^CHANGECOLOR;
 						sprintf(str,"takeback: ");
 						// and print move number and move into the status bar
@@ -761,10 +785,10 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 							PostMessage(hwnd,WM_COMMAND,INTERRUPTENGINE,0);
 						else
 							abortengine();
-						}
+							}
 					else 
 						sprintf(str,"Takeback not possible: you are at the start of the game!");
-						
+
 					newposition=TRUE;
 					reset=1;
 					break;
@@ -1055,6 +1079,10 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 				case OPTIONSLANGUAGEITALIANO:
 					SetMenuLanguage(OPTIONSLANGUAGEITALIANO);
 					break;
+				
+				case OPTIONSLANGUAGEFRANCAIS:
+					SetMenuLanguage(OPTIONSLANGUAGEFRANCAIS);
+					break;
 
 				case OPTIONSPRIORITY:
 					toggle(&(gCBoptions.priority));
@@ -1304,16 +1332,14 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 						x1=-1;
 						}
 					if(setup) 
-						sprintf(str,"Setup mode...");
+						sprintf(str, "Setup mode...");
 					if(!setup)
 						{
-						sprintf(str,"Setup done");
-						// exiting from setup mode: reset game pointers
-						initlinkedlist();
+						sprintf(str, "Setup done");
 						// get FEN string
-						board8toFEN(board8,str2,color,GPDNgame.gametype);
-						// and set whatever there is to set in the GPDNgame 
-						resetgame(&GPDNgame, gametype(), str2);
+						reset_current_game_pdn();
+						board8toFEN(board8, GPDNgame.FEN, color, GPDNgame.gametype);
+						sprintf(GPDNgame.setup, "1");
 						}
 					break;
 
@@ -1381,6 +1407,12 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 							else
 								showfile("help.htm");
 							break;
+						case FRANCAIS:
+							if(fileispresent("helpfrancais.htm"))
+								showfile("helpfrancais.htm");
+							else
+								showfile("help.htm");
+							break;
 						case ENGLISH:
 							showfile("help.htm");
 							break;
@@ -1427,6 +1459,12 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 					testset_number = 0;
 					changeCBstate(CBstate,RUNTESTSET);
 					break;
+
+				/*case CM_BUILDEGDB:
+					// build six-piece db with dbgen.bat
+					if(MessageBox(hwnd,"Building the 6-piece database will\ntake a while (4 hours on a fast computer).\nDo you wish to coninue?","Confirm database build",MB_OKCANCEL|MB_ICONQUESTION) == IDOK)
+						builddb(str);
+					break;*/
 				}
 			break;
 
@@ -1441,6 +1479,9 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 
 			// save settings 
 			savesettings(&gCBoptions);
+
+			//Shell_NotifyIcon(NIM_DELETE,&pnid); // remove tray icon 
+		
 
 			// unload engines
 			fFreeResult = FreeLibrary(hinstLib1);
@@ -1457,51 +1498,24 @@ LRESULT CALLBACK WindowFunc(HWND hwnd, UINT message,WPARAM wParam, LPARAM lParam
 	return 0;
 	}
 
-int resetgame(struct PDNgame *game, int gametype, char *FEN)
-	{
-	// resets the PDNgame structure; ugly, still contains some globals (color, gCBoptions)
-	sprintf(game->black,"");
-	sprintf(game->white,"");
-	sprintf(game->resultstring,"*");
-	sprintf(game->event,"");
-	sprintf(game->date,"");
-	sprintf(game->round,"");
-	sprintf(game->site,"");
-	game->result = UNKNOWN;
-	game->head = head;
-	game->gametype = gametype;
-	gCBoptions.mirror = 0;
-	if(game->gametype == GT_ITALIAN) 
+
+void reset_current_game_pdn()
 		{
-		color = WHITE;
-		gCBoptions.mirror=1;
+		initlinkedlist();
+		sprintf(GPDNgame.black, "");
+		sprintf(GPDNgame.white, "");
+		sprintf(GPDNgame.resultstring, "*");
+		sprintf(GPDNgame.event, "");
+		sprintf(GPDNgame.date, "");
+		sprintf(GPDNgame.FEN, "");
+		sprintf(GPDNgame.round, "");
+		sprintf(GPDNgame.setup, "");
+		sprintf(GPDNgame.site, "");
+		GPDNgame.result = UNKNOWN;
+		GPDNgame.head = head;
+		GPDNgame.gametype = gametype();
 		}
 
-	if(game->gametype == GT_SPANISH) 
-		{
-		color = WHITE;
-		gCBoptions.mirror=1;
-		}
-
-	if(game->gametype == GT_RUSSIAN) 
-		{
-		color = WHITE;
-		}
-
-	if(game->gametype == GT_BRAZILIAN)
-		{
-		}
-
-	if(game->gametype == GT_CZECH)
-		{
-		color = WHITE;
-		}
-
-	// and the setup codes 
-	sprintf(game->setup,"1");
-	sprintf(game->FEN,FEN);
-	return 1;
-	}
 
 int SetMenuLanguage(int language)
 	{
@@ -1531,6 +1545,12 @@ int SetMenuLanguage(int language)
 		case OPTIONSLANGUAGEITALIANO:
 			hmenu = LoadMenu(g_hInst, "MENUITALIANO");
 			gCBoptions.language = ITALIANO;
+			SetMenu(hwnd, hmenu);
+			break;
+		case FRANCAIS:
+		case OPTIONSLANGUAGEFRANCAIS:
+			hmenu = LoadMenu(g_hInst, "MENUFRANCAIS");
+			gCBoptions.language = FRANCAIS;
 			SetMenu(hwnd, hmenu);
 			break;
 		}
@@ -1563,21 +1583,7 @@ int handlesetupcc(int *color)
 	else
 		*color=BLACK;
 
-	// have to save this stuff!
-	initlinkedlist();
-	// set whatever there is to set in the GPDNgame 
-	// the usual suspects...
-	sprintf(GPDNgame.black,"");
-	sprintf(GPDNgame.white,"");
-	sprintf(GPDNgame.resultstring,"*");
-	sprintf(GPDNgame.event,"");
-	sprintf(GPDNgame.date,"");
-	sprintf(GPDNgame.round,"");
-	sprintf(GPDNgame.site,"");
-	GPDNgame.result = UNKNOWN;
-	GPDNgame.head = head;
-
-	GPDNgame.gametype = gametype();
+	reset_current_game_pdn();
 	gCBoptions.mirror = 0;
 	if(GPDNgame.gametype == GT_ITALIAN) 
 		{
@@ -1634,6 +1640,7 @@ int handle_rbuttondown(int x, int y)
 int handle_lbuttondown(int x, int y)
 	{
 	int i, legal, legalmovenumber;
+	int from, to; 
 	// if we are in setup mode, add a black piece.
 	if(setup)
 		{
@@ -1679,8 +1686,27 @@ int handle_lbuttondown(int x, int y)
 					{
 					legal++;
 					legalmovenumber = i;
+					from = coorstonumber(x1,y1,GPDNgame.gametype);
+					to = i; 
 					}
 				}
+
+			// look for a single move possible to an empty square
+			if(legal == 0) {
+				for(i=1; i<=32; i++)
+				{
+				if(islegal((int *)board8, color, i, coorstonumber(x1,y1,GPDNgame.gametype), &GCBmove) != 0)
+					{
+					legal++;
+					legalmovenumber = i;
+					from = i; 
+					to = coorstonumber(x1,y1,GPDNgame.gametype); 
+					}
+				}
+				if(legal != 1)
+					legal = 0; 
+			}
+
 			// remove the output that islegal generated, it's disturbing ("1-32 illegal move")
 			sprintf(str,"");
 			if(legal == 1)
@@ -1688,7 +1714,8 @@ int handle_lbuttondown(int x, int y)
 				// is it the only legal move?
 				// if yes, do it! 
 				// if we are in user book mode, add it to user book!
-				if(islegal((int *)board8,color,coorstonumber(x1,y1,GPDNgame.gametype),legalmovenumber,&GCBmove)!=0)
+				//if(islegal((int *)board8,color,coorstonumber(x1,y1,GPDNgame.gametype),legalmovenumber,&GCBmove)!=0)
+				if(islegal((int *)board8,color,from,to,&GCBmove)!=0)
 					// a legal move!
 					{
 					// insert move in the linked list 
@@ -1824,7 +1851,7 @@ int handle_lbuttondown(int x, int y)
 
 				// call animation function which will also execute the move
 				setanimationbusy(TRUE);
-				hAniThread=CreateThread(NULL,0,(LPTHREAD_START_ROUTINE)AnimationThreadFunc,(HWND) hwnd,0,&g_AniThreadId);
+				hAniThread = CreateThread(NULL,0,(LPTHREAD_START_ROUTINE)AnimationThreadFunc,(HWND) hwnd,0,&g_AniThreadId);
 				// if we are in enter game mode: tell engine to stop 
 				if(CBstate==OBSERVEGAME)
 					SendMessage(hwnd,WM_COMMAND,INTERRUPTENGINE,0);
@@ -1843,12 +1870,17 @@ int handle_lbuttondown(int x, int y)
 
 int handletimer(void)
 	{
+	// timer goes off all 1/10th of a second. this function polls some things and updates
+	// them if necessary:
+	// icons in the toolbar (color, two-player, engine, book mode).
+	// generates pseudo-logfile for engines that don't do this themselves.
 	static char oldstr[1024];
 	char filename[MAX_PATH];
 	static int oldcolor;
 	static int oldtogglemode;
 	static int oldtogglebook;
 	static int oldtoggleengine;
+	static int engineIcon; 
 	FILE *Lfp;
 	int  ch = '=';
 
@@ -1873,6 +1905,15 @@ int handletimer(void)
 				}
 			}
 		}
+
+	// TODO: update toolbar to display engine thinking
+	/*if(enginebusy) {
+		engineIcon = (engineIcon++ % 8);
+		SendMessage(tbwnd, TB_CHANGEBITMAP, (WPARAM)..., MAKELPARAM(x,0)); 
+	}
+	else {
+	}*/
+
 	// update toolbar to display whose turn it is 
 	if(oldcolor!=color)
 		{
@@ -2000,7 +2041,7 @@ int handlegamereplace(int replaceindex, char *databasename)
 		reindex = 1;
 
 		// read database into memory */
-		dbstring = malloc(filesize);
+		dbstring = (char *) malloc(filesize);
 		if(dbstring == NULL)
 			{
 			sprintf(str,"malloc error");
@@ -2021,7 +2062,7 @@ int handlegamereplace(int replaceindex, char *databasename)
 		fclose(fp);
 
 		// allocate gamestring for pdnstring 
-		gamestring = malloc(GAMEBUFSIZE);
+		gamestring = (char *) malloc(GAMEBUFSIZE);
 		if(gamestring == NULL) 
 			{
 			sprintf(str,"malloc error");
@@ -2148,7 +2189,7 @@ char *loadPDNdbstring(char *dbname)
 
 	filesize = getfilesize(dbname);
 
-	dbstring = malloc(filesize);
+	dbstring = (char *) malloc(filesize);
 	if(dbstring == NULL )
 		{
 		MessageBox(hwnd,"not enough memory for this operation","Error",MB_OK);
@@ -2215,7 +2256,7 @@ int selectgame(int how)
 		// load database into dbstring:
 		dbstring = loadPDNdbstring(database);
 
-		gamestring = malloc(GAMEBUFSIZE);
+		gamestring = (char *) malloc(GAMEBUFSIZE);
 		if(gamestring == NULL)
 			{
 			MessageBox(hwnd,"not enough memory for this operation","Error",MB_OK);
@@ -2320,7 +2361,7 @@ int selectgame(int how)
 			dbstring = loadPDNdbstring(database);
 
 			// fill the struct 'data' with the PDN headers 
-			gamestring = malloc(GAMEBUFSIZE);
+			gamestring = (char *) malloc(GAMEBUFSIZE);
 			if(gamestring == NULL)
 				{
 				MessageBox(hwnd,"not enough memory for this operation","Error",MB_OK);
@@ -2533,7 +2574,7 @@ int loadgamefromPDNstring(int gameindex, char *dbstring)
 	{
 	char *p;
 	int i;	
-	char *gamestring = malloc(GAMEBUFSIZE);
+	char *gamestring = (char *) malloc(GAMEBUFSIZE);
 
 	p = dbstring;
 	i = gameindex+1;
@@ -2785,7 +2826,7 @@ int createcheckerboard(HWND hwnd)
 	InitCheckerBoard(board8);
 
 	// print version number in status bar
-	sprintf(str, "This is CheckerBoard %s, Kuesnacht, May 3, 2009", VERSION);
+	sprintf(str, "This is CheckerBoard %s, %s", VERSION, PLACE);
 	return 1;
 	}
 
@@ -2928,7 +2969,6 @@ DWORD ThreadFunc(LPVOID param)
 	struct pos userbookpos;
 	int founduserbookmove = 0;
 
-	//setenginebusy(TRUE);			// set mode to calculating - not necessary, since it was done in main function
 	starttime=clock();
 	abortcalculation = 0;		// if this remains 0, we will execute the move - else not
 
@@ -2994,11 +3034,18 @@ DWORD ThreadFunc(LPVOID param)
 		//--------------------------------------------------------------//
 		if(getmove != NULL)
 			{
+			/* Display the Play! bitmap with red foreground when the engine is searching. */
+			PostMessage(tbwnd, TB_CHANGEBITMAP, (WPARAM)MOVESPLAY, MAKELPARAM(19, 0));
+
 			// if in engine match handicap mode, give primary engine half the time of secondary engine.
 			if(CBstate == ENGINEMATCH && handicap && currentengine == 1)
 				result=(getmove)((int *)originalcopy,color,maxtime/2,str,&playnow,reset+2*gCBoptions.exact+4*increment,0,&LCBmove);
 			else
 				result=(getmove)((int *)originalcopy,color,maxtime,str,&playnow,reset+2*gCBoptions.exact+4*increment,0,&LCBmove);
+
+			/* Display the Play! bitmap with black foreground when the engine is not searching. */
+			PostMessage(tbwnd, TB_CHANGEBITMAP, (WPARAM)MOVESPLAY, MAKELPARAM(2, 0));
+
 			if(increment)
 				{
 				maxtime += incrementtime;
@@ -3145,7 +3192,8 @@ int changeCBstate(int oldstate, int newstate)
 	if(oldstate == BOOKADD)
 		SendMessage(tbwnd, TB_CHECKBUTTON, (WPARAM)BOOKMODE_ADD,MAKELONG(0,0));
 
-	CBstate=newstate;
+//	CBstate = (state) newstate;
+	CBstate = newstate;
 
 	// toolbar buttons
 	if(CBstate == BOOKVIEW)
@@ -4145,7 +4193,8 @@ int appendmovetolist(struct CBmove m)
 	char pdn[255];
 
 	// enter move in list
-	newlistentry = malloc(sizeof(struct listentry));
+//	newlistentry = (listentry *) malloc(sizeof(struct listentry));
+	newlistentry =  malloc(sizeof(struct listentry));
 	if(newlistentry == NULL)
 		{
 		CBlog("could not allocate memory for CB movelist");
@@ -4181,8 +4230,7 @@ int getfilename(char filename[255], int what)
 	(of).nMaxFile = MAX_PATH;
 	(of).lpstrFileTitle = NULL;
 	(of).nMaxFileTitle = 0;
-	(of).lpstrInitialDir = gCBoptions.userdirectory; // this is the CheckerBoard\games directory; default
-												     // other directories are set as needed
+	(of).lpstrInitialDir = gCBoptions.userdirectory;
 	(of).lpstrTitle = NULL;
 	(of).Flags = OFN_HIDEREADONLY|OFN_PATHMUSTEXIST;
 	(of).nFileOffset = 0;
@@ -4312,27 +4360,16 @@ int builtinislegal(int board8[8][8], int color, int from, int to, struct CBmove 
 	return 0;
 	}
 
+
 void newgame(void)
 	{
 	InitCheckerBoard(board8);
+	reset_current_game_pdn();
 	color = BLACK;
-	initlinkedlist();
-	GPDNgame.head = head;
 	newposition = TRUE;
 	reset = 1;
 	gCBoptions.mirror = 0;
-	sprintf(GPDNgame.black,"");
-	sprintf(GPDNgame.white,"");
-	sprintf(GPDNgame.resultstring,"*");
-	sprintf(GPDNgame.event,"");
-	sprintf(GPDNgame.date,"");
-	sprintf(GPDNgame.FEN,"");
-	sprintf(GPDNgame.round,"");
-	sprintf(GPDNgame.setup,"");
-	sprintf(GPDNgame.site,"");
-	GPDNgame.result=UNKNOWN;
 
-	GPDNgame.gametype=gametype();
 	if(GPDNgame.gametype == GT_ITALIAN) 
 		{
 		color=WHITE;
@@ -4345,7 +4382,7 @@ void newgame(void)
 		}
 	if(GPDNgame.gametype == GT_RUSSIAN) 
 		{
-		color=WHITE;
+		color = WHITE;
 		}
 	if(GPDNgame.gametype == GT_CZECH)
 		{
@@ -4467,7 +4504,7 @@ void doload(struct PDNgame *PDNgame, char *gamestring, int *color, int board8[8]
 		FENtoboard8(board8,PDNgame->FEN,color,GPDNgame.gametype);
 
 	/*ok, headers read, now parse PDN input:*/
-	while((state = PDNparseGetnextPDNtoken(&p,token)))
+	while((state = (PDN_PARSE_STATE) PDNparseGetnextPDNtoken(&p,token)))
 		{
 		/* check for special tokens*/
 		/* move number - discard */
@@ -4510,7 +4547,8 @@ void doload(struct PDNgame *PDNgame, char *gamestring, int *color, int board8[8]
 #endif
 		// ok, it was just a move 
 		sprintf(current->PDN,"%s",token);
-		newlistentry = malloc(sizeof(struct listentry));
+//		newlistentry = (listentry *) malloc(sizeof(struct listentry));
+		newlistentry =  malloc(sizeof(struct listentry));
 		if(newlistentry != NULL)
 			{
 			sprintf(newlistentry->comment,"");
@@ -4657,7 +4695,7 @@ void initengines(void)
 	hinstLib1 = LoadLibrary(Lstr);
 	// and go back to the working dir
 	SetCurrentDirectory(CBdirectory);
-
+	
 	// If the handle is valid, try to get the function addresses
 	if (hinstLib1 != NULL)
 		{
@@ -4741,7 +4779,8 @@ int initlinkedlist(void)
 		head = tail;
 		}
 
-	head = malloc(sizeof(struct listentry));
+//	head = (listentry *)  malloc(sizeof(struct listentry));
+	head =  malloc(sizeof(struct listentry));
 	if(head == NULL)
 		exit(0);
 
@@ -4765,13 +4804,16 @@ HWND CreateAToolBar(HWND hwndParent)
 	TBADDBITMAP tbab; 
 	INITCOMMONCONTROLSEX icex;
 	int i;
-	int id[NUMBUTTONS] = {	15,
+	int id[NUMBUTTONS] = {
+		15,
 		0,
 		NUMBUTTONS+STD_FILENEW,NUMBUTTONS+STD_FILESAVE,NUMBUTTONS+STD_FILEOPEN,NUMBUTTONS+STD_FIND,
 		0,
 		7,NUMBUTTONS+STD_UNDO,NUMBUTTONS+STD_REDOW,8,
 		0,
-		2,3,0,
+		2,
+		3,
+		0,
 		0,
 		10,11,17,
 		0,
@@ -4802,6 +4844,7 @@ HWND CreateAToolBar(HWND hwndParent)
 	// Ensure that the common control DLL is loaded. 
 	icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
 	icex.dwICC  = ICC_BAR_CLASSES;
+	
 	InitCommonControlsEx(&icex);
 
 	// Create a toolbar. 

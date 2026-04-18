@@ -7,7 +7,13 @@
 //
 // Generated from the TEXTINCLUDE 2 resource.
 //
-#include "afxres.h"
+
+// instead of #include afxres.h use the following two lines:
+#include <windows.h>
+#define IDC_STATIC (-1) 
+
+
+
 /////////////////////////////////////////////////////////////////////////////
 #undef APSTUDIO_READONLY_SYMBOLS
 
@@ -172,7 +178,7 @@ BEGIN
         MENUITEM "Run Test Set",                805
         MENUITEM "Handicap Mode",               806
     END
-END
+ END
 
 MENUENGLISH MENU 
 BEGIN
@@ -750,7 +756,7 @@ CAPTION "About CheckerBoard"
 FONT 8, "MS Sans Serif", 0, 0, 0x1
 BEGIN
     PUSHBUTTON      "OK",1,50,193,50,14,BS_CENTER
-    LTEXT           "This is CheckerBoard 1.70\nCopyright (c) 2000-2009 Martin Fierz\nAll rights reserved\n\nCheckerBoard is an interface program to checkers engines\n\nInspired by Tim Mann's Winboard\n\nThanks to all who have contributed",101,7,88,140,98,NOT WS_GROUP
+    LTEXT           "This is CheckerBoard 1.72\nCopyright (c) 2000-2011 Martin Fierz\nwith contributions by Ed Gilbert\n\nCheckerBoard is an interface program to checkers engines\n\nInspired by Tim Mann's Winboard\n\nThanks to all who have contributed",101,7,88,140,98,NOT WS_GROUP
     CONTROL         101,-1,"Static",SS_BITMAP | SS_REALSIZEIMAGE,4,4,143,80
 END
 
@@ -1054,7 +1060,8 @@ END
 //
 // Generated from the TEXTINCLUDE 3 resource.
 //
-
+
+
 /////////////////////////////////////////////////////////////////////////////
 #endif    // not APSTUDIO_INVOKED
 

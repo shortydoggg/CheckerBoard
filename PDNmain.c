@@ -1,6 +1,6 @@
 // PDNmain demonstrates the use of PDNparse-library
 
-#include "stdafx.h"
+//#include "stdafx.h"
 #include "stdlib.h"
 #include "string.h"
 #include "ctype.h"

@@ -72,7 +72,7 @@ int FENtoclipboard(HWND hwnd, int board8[8][8], int color, int gametype)
 	{
 	char *FENstring;
 
-	FENstring = malloc(GAMEBUFSIZE);
+	FENstring = (char *) malloc(GAMEBUFSIZE);
 	board8toFEN(board8, FENstring, color, gametype);
 	MessageBox(hwnd, FENstring,"printout is",MB_OK);
 	texttoclipboard(FENstring);
@@ -86,7 +86,7 @@ int PDNtoclipboard(HWND hwnd, struct PDNgame *game)
 
 	// allocate memory for game, print game to memory, call texttoclipboard to 
 	// place it on clipboard.
-	gamestring = malloc(GAMEBUFSIZE);
+	gamestring = (char *) malloc(GAMEBUFSIZE);
 	PDNgametoPDNstring(game,gamestring, "\r\n");
 	MessageBox(hwnd,gamestring,"printout is",MB_OK);
 	texttoclipboard(gamestring);
@@ -127,7 +127,7 @@ int texttoclipboard(char *text)
 	// allocate memory for the game string
 	hOut = GlobalAlloc(GHND|GMEM_DDESHARE, (DWORD) GAMEBUFSIZE);	 
 	// and lock it
-	gamestring = GlobalLock(hOut);	
+	gamestring = (char *) GlobalLock(hOut);	
 
 	sprintf(gamestring,"%s",text);
 
@@ -152,7 +152,7 @@ char *textfromclipboard(HWND hwnd, char *str)
 	HGLOBAL hIn;
 	int i;
 
-	gamestring = malloc(GAMEBUFSIZE);
+	gamestring = (char *) malloc(GAMEBUFSIZE);
 	if(gamestring == NULL)
 		{
 		sprintf(str,"clipboard open failed");
@@ -164,7 +164,7 @@ char *textfromclipboard(HWND hwnd, char *str)
 		hIn = GetClipboardData(CF_TEXT);
 		if(hIn != NULL)
 			{
-			p = GlobalLock(hIn);
+			p =  (char *) GlobalLock(hIn);
 			if(p == NULL)
 				{
 				sprintf(str,"globalloc failed");
@@ -597,3 +597,33 @@ int extract_path(char *name, char *path)
 	path[i] = 0;
 	return(0);
 }
+
+/*
+void builddb(char *str)
+	{
+	// call the db generator if there is enough free disk space
+	HINSTANCE hinst;
+	int error;
+	ULARGE_INTEGER FreeBytesAvailable,TotalNumberOfBytes,TotalNumberOfFreeBytes;
+	__int64 freebytes;
+
+	GetDiskFreeSpaceEx(NULL,&FreeBytesAvailable,&TotalNumberOfBytes,&TotalNumberOfFreeBytes);
+	
+	freebytes = (__int64)(FreeBytesAvailable.LowPart) + (((__int64)FreeBytesAvailable.HighPart)<<32);
+
+	if(freebytes < (DWORD64)220000000)
+		{
+		(str,"not enough free disk space for this operation");
+		return;
+		}
+	else
+		sprintf(str,"There is enough free disk space (about %I64i MB) - building database...", freebytes/1024/1024);
+
+	hinst = ShellExecute(NULL,"open","db\\dbgen.bat",NULL,NULL,SW_SHOW);
+	error = PtrToLong(hinst);
+	if (error <= 32)
+		sprintf(str,"error: %i", error);
+	
+	return;	
+	}
+	*/

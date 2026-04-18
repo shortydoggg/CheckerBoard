@@ -27,7 +27,7 @@ int getfilesize(char *filename)
 	int filesize=0;
 	char *buffer;
 
-	buffer=malloc(1024);
+	buffer= (char *) malloc(1024);
 	if(buffer==0)
 		return -1;
 	fp=fopen(filename,"r");
@@ -63,7 +63,7 @@ int PDNparseGetnumberofgames(char *filename)
 
 	// allocate a buffer large enough to load the entire file into memory:
 	filesize = ((filesize/1024)+2)*1024;
-	buffer = malloc(filesize);
+	buffer = (char *)malloc(filesize);
 	if(buffer==NULL)
 		return -1;
 	

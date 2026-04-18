@@ -20,10 +20,11 @@
 
 
 #ifdef _WIN64
-#define CB_REGISTRY_NAME "Software\\Martin Fierz\\CheckerBoard64\\1.70"
+#define CB_REGISTRY_NAME "Software\\Martin Fierz\\CheckerBoard64\\"
 #else
-#define CB_REGISTRY_NAME "Software\\Martin Fierz\\CheckerBoard\\1.70"
+#define CB_REGISTRY_NAME "Software\\Martin Fierz\\CheckerBoard\\"
 #endif
+// VERSION will be appended to this name
 
 
 void savesettings(struct CBoptions *options)
@@ -31,9 +32,12 @@ void savesettings(struct CBoptions *options)
 	// save settings in the registry 	
 	HKEY hKey;
 	unsigned long result;
+	char subkey[256];
 
+	// create key name from CB version
+	sprintf(subkey,"%s%s", CB_REGISTRY_NAME, VERSION); 
 	// open registry key 
-	RegCreateKeyEx(HKEY_CURRENT_USER, CB_REGISTRY_NAME, 0, "CB_Key", 0, KEY_WRITE, NULL, &hKey, &result);
+	RegCreateKeyEx(HKEY_CURRENT_USER, subkey, 0, "CB_Key", 0, KEY_WRITE, NULL, &hKey, &result);
 
 	// save options struct
 	options->crc = sizeof(struct CBoptions);
@@ -54,16 +58,20 @@ void loadsettings(struct CBoptions *options, char CBdirectory[256])
 	DWORD datatype, datasize;
 	int defaultvalues;
 	int use_registry_install_path;
+	char subkey[256];
 
+	// create key name from CB version
+	sprintf(subkey,"%s%s", CB_REGISTRY_NAME, VERSION); 
+	
 	// open registry key for checkerboard,
 	// if it doesnt exist, create it 
-	RegCreateKeyEx(HKEY_CURRENT_USER, CB_REGISTRY_NAME, 0, "CB_Key", 0, KEY_READ, NULL, &hKey, &result);
+	RegCreateKeyEx(HKEY_CURRENT_USER, subkey, 0, "CB_Key", 0, KEY_READ, NULL, &hKey, &result);
 
 	/* Initialize the CBdirectory with the location of the executable.
 	 * If that fails, then initialize it with the current directory and 
 	 * if we find the InstallPath in the registry, we will overwrite CBdirectory with that.
 	 */
-	use_registry_install_path = 1;
+	use_registry_install_path = 0;
 	GetModuleFileName(NULL, lstr, sizeof(lstr));
 	if (extract_path(lstr, CBdirectory)) {
 
@@ -155,7 +163,7 @@ void loadsettings(struct CBoptions *options, char CBdirectory[256])
 		sprintf(options->secondaryenginestring,"simplech64.dll");
 #else
 #pragma message("_WIN64 is not defined.")
-		sprintf(options->primaryenginestring,"cakeM32.dll");
+		sprintf(options->primaryenginestring,"cake.dll");
 		sprintf(options->secondaryenginestring,"simplech.dll");
 #endif
 		options->priority=0;

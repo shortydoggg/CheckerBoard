@@ -33,6 +33,7 @@
 #define ESPANOL 1
 #define ITALIANO 2
 #define DEUTSCH 3
+#define FRANCAIS 4
 
 #define NEMESIS // parse nemesis-style comments ()
 #define MAXMOVES 28

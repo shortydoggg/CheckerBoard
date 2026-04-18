@@ -3,7 +3,7 @@
 #define STEPS 12.0		// 12 number of animation steps to make
 
 
-DWORD	AnimationThreadFunc(LPVOID param);
+DWORD	AnimationThreadFunc(HWND hwnd);
 int		getxymetrics(double *xmetric, double *ymetric, HWND hwnd);
 int		printboard(HWND hwnd, HDC hdc, HDC bmpdc, HDC stretchdc, int b[8][8]);
 int		printsampleboard(HWND hwnd, HDC hdc, HDC bmpdc, HDC stretchdc);

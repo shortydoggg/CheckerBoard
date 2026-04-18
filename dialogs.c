@@ -39,7 +39,7 @@ int Tabs[4];
 
 /* Combo box entries. */
 static int limit_pieces[] = {24, 10, 9, 8, 7, 6, 5, 4};
-static int thread_limits[] = {4, 3, 2, 1};
+static int thread_limits[] = {8, 7, 6, 5, 4, 3, 2, 1};
 
 
 INT CALLBACK BrowseCallbackProc(HWND hwnd, 
@@ -377,7 +377,7 @@ HWND InitHeader(HWND hParent)
 	GetClientRect(hParent,&rect);
 
 	hHead=CreateWindow(WC_HEADER,NULL,WS_CHILD|WS_BORDER,CW_USEDEFAULT,CW_USEDEFAULT,0,0,hParent,(HMENU) ID_HEADCONTROL,g_hInst,NULL);
-	hFont = GetStockObject(DEFAULT_GUI_FONT);
+	hFont =(HFONT) GetStockObject(DEFAULT_GUI_FONT);
 	SendMessage(hHead,WM_SETFONT,(WPARAM) hFont,MAKELPARAM(TRUE,0));
 	// get header control layout that will fit the parent window 
 	layout.pwpos=&winpos;
@@ -722,18 +722,14 @@ BOOL CALLBACK EngineOptionsFunc(HWND hdwnd, UINT message, WPARAM wParam, LPARAM 
 			memstat.dwLength = sizeof(memstat);
 			GlobalMemoryStatusEx(&memstat);
 			availableMB = (int)(memstat.ullTotalPhys / (1024*1024));
-			if(availableMB>16)
-				SendDlgItemMessage(hdwnd,IDC_HASHSIZE,LB_ADDSTRING,0,(LPARAM)"8");
-			if(availableMB>30)
-				SendDlgItemMessage(hdwnd,IDC_HASHSIZE,LB_ADDSTRING,0,(LPARAM)"16");
-			if(availableMB>60)
-				SendDlgItemMessage(hdwnd,IDC_HASHSIZE,LB_ADDSTRING,0,(LPARAM)"32");
-			if(availableMB>100)
-				SendDlgItemMessage(hdwnd,IDC_HASHSIZE,LB_ADDSTRING,0,(LPARAM)"64");
-			if(availableMB>200)
-				SendDlgItemMessage(hdwnd,IDC_HASHSIZE,LB_ADDSTRING,0,(LPARAM)"128");
-			if(availableMB>300)
-				SendDlgItemMessage(hdwnd,IDC_HASHSIZE,LB_ADDSTRING,0,(LPARAM)"256");
+
+			i = 8; 
+			while (i <= availableMB/2) {
+				sprintf(Lstr, "%i", i);
+				SendDlgItemMessage(hdwnd,IDC_HASHSIZE,LB_ADDSTRING,0,(LPARAM)Lstr);
+				i *= 2;
+			}
+			
 			
 			// initialize EGDB combobox
 			for(i=0;i<availableMB-64;i+=32)

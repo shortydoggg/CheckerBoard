@@ -19,7 +19,10 @@
 #include "checkerboard.h"
 #include "utility.h"
 
+
+
 void boardtobitboard(int board8[8][8], struct pos *p);
+
 
 /* database values */
 #define DRAW 0
@@ -205,7 +208,8 @@ int pdnopen(char filename[256], int gametype)
 	
 	if(positions == NULL)
 		{
-		positions = malloc(maxpos * sizeof(struct PDNlistentry));
+//		positions = (PDNlistentry *) malloc(maxpos * sizeof(struct PDNlistentry));
+		positions =  malloc(maxpos * sizeof(struct PDNlistentry));
 		if(positions == NULL)
 			return 0;
         }
@@ -216,7 +220,7 @@ int pdnopen(char filename[256], int gametype)
 	filesize = ((filesize/1024)+1)*1024;
 	
 	// allocate memory for the file
-	buffer = malloc(filesize);
+	buffer = (char *) malloc(filesize);
 	if (buffer == NULL)
 		return 0;
 

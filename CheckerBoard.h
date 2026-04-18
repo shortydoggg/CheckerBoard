@@ -4,7 +4,8 @@
 // CBconsts.h
 
 // version 
-#define VERSION "1.70"
+#define VERSION "1.72"
+#define PLACE "Küsnacht, April 23, 2011"
 
 #define OP_BOARD 0			// different opening decks
 #define OP_MAILPLAY 1
@@ -56,7 +57,7 @@ int		enginename(char str[256]);
 int		getfilename(char filename[255],int what);
 int		getanimationbusy(void);
 int		getenginebusy(void);
-void abortengine();
+void	abortengine();
 int		getenginestarting(void);
 int		getmovenumber(struct listentry *cur);
 int		handlegamereplace(int replaceindex, char *databasename);
@@ -78,7 +79,6 @@ void	move4tonotation(struct CBmove, char str[80]);
 void	newgame(void);
 void	PDNgametoPDNstring(struct PDNgame *game, char *pdnstring, char *lf);
 void	pdntogame(int startposition[8][8], int startcolor);
-int		resetgame(struct PDNgame *game, int gametype, char *FEN);
 void	setcurrentengine(int engine);
 int		SetMenuLanguage(int language);
 int		selectgame(int how);
@@ -172,6 +172,7 @@ extern char CBdocuments[MAX_PATH];
 #define OPTIONSLANGUAGEESPANOL 371
 #define OPTIONSLANGUAGEITALIANO 372
 #define OPTIONSLANGUAGEDEUTSCH 373
+#define OPTIONSLANGUAGEFRANCAIS 374
 #define DISPLAYINVERT 308
 #define DISPLAYNUMBERS 309
 #define DISPLAYMIRROR 3091

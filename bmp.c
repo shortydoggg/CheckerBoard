@@ -129,7 +129,7 @@ BITMAPFILEHEADER * DibLoadImage(PTSTR pstrFileName)
 		CloseHandle(hFile);
 		return NULL;
 		}
-	pbmfh = malloc(dwFileSize);
+	pbmfh = (BITMAPFILEHEADER *) malloc(dwFileSize);
 	if(!pbmfh)
 		{
 		CloseHandle(hFile);
@@ -162,7 +162,7 @@ HBITMAP CreateBitmapObjectFromDibFile(HDC hdc, PTSTR szFileName)
 		CloseHandle(hFile);
 		return NULL;
 		}
-	pbmfh = malloc(dwFileSize);
+	pbmfh = (BITMAPFILEHEADER *) malloc(dwFileSize);
 
 	if(!pbmfh)
 		{

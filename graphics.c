@@ -80,7 +80,7 @@ int initgraphics(HWND hwnd)
 	boardbitmap = CreateCompatibleBitmap(hdc, maxX, maxY);
 	SelectObject(boarddc, boardbitmap);
 	
-	hbrush = GetStockObject(WHITE_BRUSH);
+	hbrush = (HBRUSH) GetStockObject(WHITE_BRUSH);
 	SelectObject(memdc, hbrush);
 	
 	PatBlt(memdc, 0, 0, maxX, maxY, PATCOPY);
@@ -134,7 +134,7 @@ int resizegraphics(HWND hwnd)
 
 	// dark squares with BMPs
 	// TODO: all of this should be done just once on resize?!
-	hOldBitmap = SelectObject(bmpdc, bmp_dark);
+	hOldBitmap = (HBITMAP) SelectObject(bmpdc, bmp_dark);
 
 	if(hOldBitmap == NULL)
 		CBlog("dark square bitmap is null");
@@ -305,11 +305,14 @@ DWORD AnimationThreadFunc(HWND hwnd)
 	clock_t timer;
 	int elapsed_ms;
 	extern char str[1024];
-	extern enum state CBstate;
+	//extern enum state CBstate;
 	int xoffset = 0;
 	int yoffset = 0;
 	int size;
 	
+
+	//return 0; 
+
 	setanimationbusy(TRUE);
 
 	bmp_bm = getCBbitmap(BMPBLACKMAN);
@@ -319,8 +322,8 @@ DWORD AnimationThreadFunc(HWND hwnd)
 	bmp_manmask = getCBbitmap(BMPMANMASK);
 	bmp_kingmask = getCBbitmap(BMPKINGMASK);
 
-	blackpen = GetStockObject(BLACK_PEN);
-	whitepen = GetStockObject(WHITE_PEN);					// getstockobject - object does not need to be destroyed
+	blackpen = (HPEN) GetStockObject(BLACK_PEN);
+	whitepen = (HPEN) GetStockObject(WHITE_PEN);					// getstockobject - object does not need to be destroyed
 	maxX = GetSystemMetrics(SM_CXSCREEN);
 	maxY = GetSystemMetrics(SM_CYSCREEN);
 
@@ -459,7 +462,8 @@ DWORD AnimationThreadFunc(HWND hwnd)
 				else 
 					SelectObject(bmpdc, bmp_manmask);
 				// paint mask from bmpdc to memdc
-				// 128,128 is the dimension of the bitmap.
+				//BitBlt(memdc,r.left,r.top,r.right,r.bottom,bmpdc,0,0,SRCAND);
+				// 128,148 is the dimension of the bitmap.
 				// stretchblt from bmpdc to memdc
 				StretchBlt(memdc,r.left, r.top, size, size, bmpdc, 0,0,BMPSIZE,BMPSIZE,SRCAND);
 				// select bmp
@@ -473,6 +477,7 @@ DWORD AnimationThreadFunc(HWND hwnd)
 					SelectObject(bmpdc,bmp_wk);
 
 				// paint bmp
+				//BitBlt(memdc,r.left,r.top,r.right,r.bottom,bmpdc,0,0,SRCPAINT);
 				StretchBlt(memdc,r.left, r.top, size, size, bmpdc, 0,0,BMPSIZE,BMPSIZE,SRCPAINT);
 
 				InvalidateRect(hwnd,&r,0);
@@ -511,7 +516,7 @@ DWORD AnimationThreadFunc(HWND hwnd)
 		y2=move.to.y;
 		coorstocoors(&x,&y,gCBoptions.invert, gCBoptions.mirror);
 		coorstocoors(&x2,&y2,gCBoptions.invert, gCBoptions.mirror);
-		hOldPen = SelectObject(memdc,hPen);
+		hOldPen = (HPEN) SelectObject(memdc,hPen);
 
 		MoveToEx(memdc,(int)(size*x + xoffset),(int)(size*(7-y)+upperoffset + yoffset),NULL);
 		LineTo(memdc,(int)(size*(x+1)-1 + xoffset),(int)(size*(7-y)+upperoffset + yoffset));
@@ -588,7 +593,7 @@ void updatestretchDC(HWND hwnd, HDC bmpdc, HDC stretchdc, int size)
 
 	xmetric = size;
 
-	hOldBitmap = SelectObject(bmpdc, bmp_manmask);
+	hOldBitmap = (HBITMAP) SelectObject(bmpdc, bmp_manmask);
 	StretchBlt(stretchdc, 8*xmetric, 0, xmetric, xmetric, bmpdc, 0,0,BMPSIZE,BMPSIZE,SRCCOPY);
 	SelectObject(bmpdc, bmp_kingmask);
 	StretchBlt(stretchdc, 8*xmetric, xmetric, xmetric, xmetric, bmpdc, 0,0,BMPSIZE,BMPSIZE,SRCCOPY);
@@ -691,7 +696,7 @@ int printboard(HWND hwnd, HDC hdc, HDC bmpdc, HDC stretchdc, int b[8][8])
 	// add board numbers 
 	if(gCBoptions.numbers)
 		{
-		oldfont = SelectObject(hdc,myfont);
+		oldfont = (HFONT) SelectObject(hdc,myfont);
 		SetTextColor(hdc,gCBoptions.colors[1]);
 		SetBkMode(hdc,TRANSPARENT);
 		for(i=0;i<=7;i++)
@@ -797,7 +802,7 @@ void selectstone(int x, int y, HWND hwnd, int board[8][8])
 		coorstocoors(&x,&y,gCBoptions.invert, gCBoptions.mirror);
 		getxymetrics(&xmetric, &ymetric, hwnd);
 
-		hOldPen = SelectObject(memdc,hPen);
+		hOldPen = (HPEN) SelectObject(memdc,hPen);
 
 		MoveToEx(memdc,(int)(xmetric*x),(int)(ymetric*(7-y)+upperoffset),NULL);
 		LineTo(memdc,(int)(xmetric*(x+1)-1),(int)(ymetric*(7-y)+upperoffset));

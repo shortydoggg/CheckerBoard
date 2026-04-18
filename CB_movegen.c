@@ -602,7 +602,7 @@ void whitecapture(int board[12][12],struct CBmove movelist[MAXMOVES],struct CBmo
 			if(y==7) mm.newpiece=2;
 			else mm.newpiece=1;
 
-			whitecapture(board,movelist,mm,x+2,y+2,d+1);
+			whitecapture(b,movelist,mm,x+2,y+2,d+1);
 			end=0;
 			}
 		mm=m;
