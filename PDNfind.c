@@ -190,10 +190,10 @@ int pdnopen(char filename[256], int gametype)
 	int win=0,loss=0,draw=0,unknown=0;
 	char FEN[255];
 	char setup[255];
-	char pdnopenname[MAX_PATH];
+//	char pdnopenname[MAX_PATH];
 	int board8[8][8];
-	int filesize=0;
-	int square[32] = {SQ1, SQ2, SQ3, SQ4, SQ5, SQ6, SQ7, SQ8, SQ9, SQ10, SQ11, SQ12,
+	size_t filesize=0;
+	unsigned int square[32] = {SQ1, SQ2, SQ3, SQ4, SQ5, SQ6, SQ7, SQ8, SQ9, SQ10, SQ11, SQ12,
 		              SQ13, SQ14, SQ15, SQ16, SQ17, SQ18, SQ19, SQ20, SQ21, SQ22,
 					  SQ23, SQ24, SQ25, SQ26, SQ27, SQ28, SQ29, SQ30, SQ31, SQ32};
 
@@ -208,8 +208,8 @@ int pdnopen(char filename[256], int gametype)
 	
 	if(positions == NULL)
 		{
-//		positions = (PDNlistentry *) malloc(maxpos * sizeof(struct PDNlistentry));
-		positions =  malloc(maxpos * sizeof(struct PDNlistentry));
+		positions = (struct PDNlistentry *) malloc(maxpos * sizeof(struct PDNlistentry));
+//		positions =  malloc(maxpos * sizeof(struct PDNlistentry));
 		if(positions == NULL)
 			return 0;
         }
@@ -383,12 +383,15 @@ int pdnopen(char filename[256], int gametype)
 
 
 	free(buffer);
-	strcpy(pdnopenname, CBdirectory);
+	// TODO: the following lines will cause trouble on new windows systems unless CB is run as admin
+	/* strcpy(pdnopenname, CBdirectory);
 	PathAppend(pdnopenname, "pdnopen.txt");
 	fp = fopen(pdnopenname,"w");
-	fprintf(fp,"games %i positions %i",gamenumber, n);
-	fprintf(fp,"/ngames_in_pdn %i, maxpos guess %i", games_in_pdn, maxpos);
-	fclose(fp);
+	if(fp != NULL) {
+		fprintf(fp,"games %i positions %i",gamenumber, n);
+		fprintf(fp,"/ngames_in_pdn %i, maxpos guess %i", games_in_pdn, maxpos);
+		fclose(fp); 
+	}*/
 	return 1;
 	}
 

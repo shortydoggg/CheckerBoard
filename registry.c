@@ -159,7 +159,7 @@ void loadsettings(struct CBoptions *options, char CBdirectory[256])
 		options->op_mailplay=0;
 #ifdef _WIN64
 #pragma message("_WIN64 is defined.")
-		sprintf(options->primaryenginestring,"cakeM64.dll");
+		sprintf(options->primaryenginestring,"cake64.dll");
 		sprintf(options->secondaryenginestring,"simplech64.dll");
 #else
 #pragma message("_WIN64 is not defined.")
