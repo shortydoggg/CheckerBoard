@@ -1,50 +1,25 @@
-#pragma once
-#include <string>
-#include <vector>
-#include "cb_interface.h"
-#include <time.h>
-#include "bitboard.h"
-
 #define COMMENTLENGTH 1024
-#define MAXNAME 256
 
-enum PDN_RESULT {
-	UNKNOWN_RES, WHITE_WIN_RES, BLACK_WIN_RES, DRAW_RES
-};
-
-enum EM_START_POSITIONS {
-	START_POS_3MOVE, START_POS_FROM_FILE
-};
-
-struct CBoptions {
+struct CBoptions
+	{
 	// holds all options of CB.
 	// the point is that it is much easier to store one struct in the registry
 	// than to save every value separately.
-	unsigned int crc;					/* The crc is calculated on the whole struct using the sizeof(CBoptions) in the crc field. */
 	char userdirectory[256];
 	char matchdirectory[256];
 	char EGTBdirectory[256];
 	char primaryenginestring[64];
 	char secondaryenginestring[64];
-	char start_pos_filename[MAX_PATH];
 	COLORREF colors[5];
 	int userbook;
+	int exact;
 	int sound;
 	int invert;
 	int mirror;
 	int numbers;
 	int highlight;
 	int priority;
-	bool exact_time;
-	bool use_incremental_time;
-	bool early_game_adjudication;
-	bool handicap_enable;		/* enable handicap multiplier for engine 2's time in engine matches. */
-	double handicap_mult;		/* eninge 2's time multiplier when handicap match is enabled. */
-	EM_START_POSITIONS em_start_positions;
 	int level;
-	double initial_time;		/* incremental time control settings. */
-	double time_increment;
-	int match_repeat_count;
 	int op_crossboard;
 	int op_mailplay;
 	int op_barred;
@@ -55,143 +30,107 @@ struct CBoptions {
 	int addoffset;
 	int language;
 	int piecesetindex;
-};
+	//int commentwindow;
+	};
 
-struct BALLOT_INFO {
-	int color;
-	Board8x8 board;
-	std::string event;
-};
+typedef struct
+	{
+	int win;
+	int loss;
+	int draw;
+	} RESULT;
 
-struct RESULT_COUNTS {
-	int black_wins;
-	int white_wins;
-	int draws;
-	int unknowns;
-};
+struct coor 				/* coordinate structure for board coordinates */
+	{
+	// was ints
+	int x;
+	int y;
+	};
 
-/* A game move with associated move text, comments, and analysis text. */
-struct gamebody_entry {
-	CBmove move;						// move
+
+
+struct CBmove					/* all the information you need about a move */
+	{
+	// was all ints. made char because i save CBmoves in user book - this saves
+	// me a factor 4 - still, they are much too larg of course...
+
+	int jumps;				/* how many jumps are there in this move? */
+	int newpiece;			/* what type of piece appears on to */
+	int oldpiece;			/* what disappears on from */
+	struct coor from,to; /* coordinates of the piece - in 8x8 notation!*/
+	struct coor path[12];/* intermediate path coordinates of the moving piece */
+	struct coor del[12]; /* squares whose pieces are deleted after the move */
+	int delpiece[12]; 	/* what is on these squares */
+	};
+
+
+
+struct listentry			/* doubly linked list which holds the game */
+	{
+	struct CBmove move;					// move
+	struct listentry *next;				// pointer to next in list
+	struct listentry *alternatenext;	// pointer to alternate next -> variations
+	struct listentry *last;				// pointer to previous in list
 	char PDN[64];						// PDN of move, e.g. 8-11 or 8x15
 	char comment[COMMENTLENGTH];		// user comment
 	char analysis[COMMENTLENGTH];		// engine analysis comment - separate from above so they can coexist
-};
+	};
 
-struct PDNgame {
+struct PDNgame
+	{
 	// structure for a PDN game
 	// standard 7-tag-roster
-	char event[MAXNAME];
-	char site[MAXNAME];
-	char date[MAXNAME];
-	char round[MAXNAME];
-	char black[MAXNAME];
-	char white[MAXNAME];
-	char resultstring[MAXNAME];
-	char FEN[MAXNAME];
-	PDN_RESULT result;
+	char event[256];
+	char site[256];
+	char date[256];
+	char round[256];
+	char black[256];
+	char white[256];
+	char resultstring[256];
+	/* support 2 more tags for setup */
+	char setup[256];
+	char FEN[256];
+	/* internal conversion to integers */
+	int result;
 	int gametype;
-	int movesindex;							/* Current index in moves[]. */
-	std::vector<gamebody_entry> moves;		/* Moves and comments in the game body. */
-};
+	/* head of the linked list */
+	struct listentry *head;
+	};
 
-/* This type is used to display game previews in the game select dialog. */
-struct gamepreview {
-	int game_index;		/* index of game into the current pdn database. */
+/*
+struct package
+	{
+	char name[256];			//package name
+	char version[64];		// package version
+	char URL[256]; 			//package location
+	char description[256];
+	char size[256];			// size in KB
+	char status[256]; 		// new package, new version, or up to date*
+	char publisher[256];
+	char filename[256];		//filename to write the file to. if this is ZIP, winzip is invoked
+	}; */
+
+struct gamedatabase{   // MAXGAMES of these get allocated! - nearly 20MB for 40'000 MAXGAMES
 	char black[64];
 	char white[64];
 	char result[10];
 	char event[128];
 	char date[32];
 	char PDN[256];
-};
+	};
+
+struct pos
+	{
+	unsigned int bm;
+	unsigned int bk;
+	unsigned int wm;
+	unsigned int wk;
+	};
 
 struct userbookentry {
-	pos position;
-	CBmove move;
-};
+	// position
+	struct pos position;
+	// move
+	struct CBmove move;
+	};
 
-/* A mapping between different time constants. */
-struct timemap {
-	int level;		/* cboptions setting. */
-	int token;		/* resource token of Windows control. */
-	double time;	/* search time. */
-};
-
-struct time_ctrl_t {
-	bool clock_paused;
-	clock_t starttime;
-	double black_time_remaining;
-	double white_time_remaining;
-	double cumulative_time_used[3];		/* Indexed by engine number, 1 or 2. */
-	int searchcount;
-};
-
-struct emstats_t {
-	int wins;
-	int draws;
-	int losses;
-	int unknowns;
-	int blackwins;
-	int blacklosses;
-	int games;
-	int opening_index;	/* index into 3-move table, 1 less than the ACF ballot number. */
-
-	inline bool is_odd(int n) {return((n & 1) == 1);}
-
-	/*
-	 * Given an engine match game number (1..N), return true if engine 1 plays black for that game.
-	 * Engine 1 plays black in odd numbered games.
-	 */
-	inline bool engine1_plays_black(int gamenum) {return(is_odd(gamenum));}
-
-	/*
-	 * Given an engine match game number (1..N), and a side-to-move color (CB_BLACK or CB_WHITE), 
-	 * return the engine number (1 or 2) that should select the next move.
-	 * Engine 1 plays black in odd numbered games.
-	 */
-	inline int get_enginenum(int gamenum, int color) {
-		if (is_odd(gamenum + color))
-			return(1);
-		else
-			return(2);
-	}
-};
-
-class Squarelist {
-public:
-	Squarelist(void) {clear();}
-	void clear(void) {m_size = 0;}
-	int first(void) {return(squares[0]);}
-	int last(void) {return(squares[m_size - 1]);}
-	int size(void) {return(m_size);}
-	int read(int index) {return(squares[index]);}
-	void append(int square) {
-		if (m_size < sizeof(squares) / sizeof(squares[0])) {
-			squares[m_size] = square;
-			++m_size;
-		}
-	}
-	int frequency(int square) {
-		int count = 0;
-		for (int i = 0; i < m_size; ++i)
-			if (squares[i] == square)
-				++count;
-		return(count);
-	}
-	void reverse_color(void) {
-		for (int i = 0; i < m_size; ++i)
-			squares[i] = 33 - squares[i];
-	}
-	void reverse_rows(void) {
-		for (int i = 0; i < m_size; ++i) {
-			int sq0 = squares[i] - 1;
-			int row = sq0 / 4;
-			squares[i] = 1 + (4 * row) + (3 - (sq0 & 3));
-		}
-	}
-
-private:
-	char m_size;
-	char squares[15];
-};

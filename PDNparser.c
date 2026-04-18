@@ -2,68 +2,92 @@
 // a PDN parser library
 // by martin fierz with some help by ed gilbert
 // originally written on 5th may 2001
-#include <algorithm>
+
 #include <stdio.h>
 #include "standardheader.h"
 #include "stdlib.h"
 #include "string.h"
 #include "ctype.h"
 #include "PDNparser.h"
-#include "utility.h"
 
-#define NEMESIS // enables detection of comments in round braces ( )
+#define NEMESIS // enables detection of comments in round braces ( ) 
 
-int PDNparseGetnumberofgames(char *filename)
-{
-	// returns the number of games in a PDN file
+
+typedef enum {
+	PDN_IDLE, PDN_READING_FROM, PDN_WAITING_SEP, PDN_WAITING_TO, PDN_READING_TO, PDN_WAITING_OPTIONAL_TO,
+	PDN_WAITING_OPTIONAL_SEP, PDN_CURLY_COMMENT, PDN_NEMESIS_COMMENT, PDN_FLUFF, PDN_QUOTED_VALUE, PDN_DONE
+} PDN_PARSE_STATE;
+
+
+int getfilesize(char *filename)
+	{
+	// returns the file size, in bytes, of a file with name file, rounded up to the
+	// next multiple of 1024 = 1KB.
+	FILE *fp;
+	int filesize=0;
 	char *buffer;
-	std::string game;
-	char *p;
-	int ngames;
-	READ_TEXT_FILE_ERROR_TYPE etype;
 
-	buffer = read_text_file(filename, etype);
-	if (buffer == nullptr)
+	buffer=malloc(1024);
+	if(buffer==0)
 		return -1;
+	fp=fopen(filename,"r");
+	while(!feof(fp))
+		filesize += fread(buffer,1024,1,fp);
+		
+	filesize++;
 
-	p = buffer;
-	ngames = 0;
-	while (PDNparseGetnextgame(&p, game))
-		++ngames;
-
+	fclose(fp);
 	free(buffer);
-	return(ngames);
-}
-
-inline bool is_pdnquote(uint8_t c)
-{
-	if (c == '"')
-		return(true);
-	if (c & 0x80) {
-		if (c == UTF8_LEFT_DBLQUOTE || c == UTF8_RIGHT_DBLQUOTE)
-			return(true);
+	return filesize*1024;
 	}
 
-	return(false);
-}
+int PDNparseGetnumberofgames(char *filename)
+	{
+	// returns the number of games in a PDN file
+	
+	FILE *fp;
+	char *buffer;
+	char game[MAXGAMESIZE];
+	char *p;
+	int filesize;
+	int n=0;
+	int bytesread=0;
 
-/*
- * Append length characters from src to dest.
- */
-void string_append(std::string &dest, char *src, size_t length)
-{
-	char savechar;
+	filesize = getfilesize(filename);
+	if(filesize == -1)
+		return -1;
 
-	/* Temporarily terminate src so we can treat src as a null-terminated C string. */
-	savechar = src[length];
-	src[length] = 0;
-	dest += src;
-	src[length] = savechar;
-}
+	fp=fopen(filename,"r");
+	if(fp==NULL)
+		return -1;
 
-int PDNparseGetnextgame(char **start, std::string &game)
-{
+	// allocate a buffer large enough to load the entire file into memory:
+	filesize = ((filesize/1024)+2)*1024;
+	buffer = malloc(filesize);
+	if(buffer==NULL)
+		return -1;
+	
+	// and zero buffer
+	memset(buffer, 0, filesize);
+	
+	// read file
+	bytesread = fread(buffer,1,filesize,fp);
+	fclose(fp);
+	buffer[bytesread] = 0;
+	
+	p=buffer;
+	
+	while(PDNparseGetnextgame(&p,game))
+		n++;
+	buffer[bytesread] = 0;
+	
+	free(buffer);
+	return n-1;
+	}
 
+int PDNparseGetnextgame(char **start,char *game)
+	{
+	/* getnextgame */
 	/* searches a game in buffer, starting at **start. a 
 		game is defined as everything between **start and
 		the first occurrence of one of the four game 
@@ -73,121 +97,100 @@ int PDNparseGetnextgame(char **start, std::string &game)
 		if the function succeeds, **start points to the next character
 		after the game returned in *game.
 		*/
-
 	// new 15. 8. 2002: try to recognize the next set of headers as terminators.
 	// new 6.9. 2002: the way it was up to now, pdnparsenextgame would just
 	// run infinitely on the last game!
 	char *p;
 	char *p_org;
 	int headersdone = 0;
-
-	game.clear();
-	if ((*start) == 0)
-		return 0;
-
-	p = (*start);
+	
+	if((*start)==0) return 0;
+	p=(*start);
 	p_org = p;
-	while (*p != 0) {
-
+	while (*p!=0)
+		{
 		/* skip headers */
-		if (*p == '[' && !headersdone) {
+		if(*p == '[' && !headersdone)
+			{
 			p++;
-			while (*p != ']' && *p != 0) {
-
-				/* Ignore anything inside quotes (e.g. ']') within headers. */
-				if (is_pdnquote(*p)) {
-					++p;
-					while (!is_pdnquote(*p) && *p != 0) {
-						++p;
-					}
-
-					if (*p == 0)
-						break;
-				}
-
+			while(*p!=']' && *p!=0)
 				p++;
 			}
-		}
-
-		if (*p == 0)
-			break;
-
+		if(*p == 0) break;
 		/* skip comments */
-		if (*p == '{') {
+		if(*p == '{')
+			{
 			p++;
-			while (*p != '}' && *p != 0) {
+			while(*p!='}' && *p!=0)
 				p++;
 			}
-		}
 
 #ifdef NEMESIS
 		// skip comments, nemesis style
-		if (*p == '(') {
+		if(*p == '(')
+			{
 			p++;
-			while (*p != ')' && *p != 0) {
+			while(*p!=')' && *p!=0)
 				p++;
 			}
-		}
 #endif
-		if (*p == 0)
-			break;
-
+		if(*p == 0) break;
+		
 		// try to detect whether we are through with the headers
-		if (isdigit((uint8_t) *p))
-			headersdone = 1;
+		if(isdigit(*p)) 
+			headersdone=1;
 
 		/* check for game terminators*/
-		if (p[0] == '[' && headersdone) {
+		if(p[0]=='[' && headersdone)
+			{
 			p--;
-			string_append(game, *start, (p - *start));
-			*start = p;
-			return (int)(p - p_org);
-		}
-
-		if (p[0] == '1' && p[1] == '-' && p[2] == '0') {
-			p += 3;
-			string_append(game, *start, (p - *start));
-			*start = p;
-			return (int)(p - p_org);
-		}
-
-		if (p[0] == '0' && p[1] == '-' && p[2] == '1' && !isdigit((uint8_t) p[3])) {
-			p += 3;
-			string_append(game, *start, (p - *start));
-			*start = p;
-			return (int)(p - p_org);
-		}
-
-		if (p[0] == '*') {
+			strncpy(game,*start,(p-*start));
+			game[p-*start]=0;
+			*start=p;
+			return (p-p_org);
+			}
+		if(p[0]=='1' && p[1]=='-' && p[2]=='0' )
+			{
+			p+=3;
+			strncpy(game,*start,(p-*start));
+			game[p-*start]=0;
+			*start=p;
+			return (p-p_org);
+			}
+		if(p[0]=='0' && p[1]=='-' && p[2]=='1' && !isdigit(p[3]))
+			{
+			p+=3;
+			strncpy(game,*start,p-(*start));
+			game[p-*start]=0;
+			*start=p;
+			return (p-p_org);
+			}
+		if(p[0]=='*')
+			{
 			p++;
-			string_append(game, *start, (p - *start));
-			*start = p;
-			return (int)(p - p_org);
-		}
-
-		if (p[0] == '1' && p[1] == '/' && p[2] == '2' && p[3] == '-' && p[4] == '1' && p[5] == '/' && p[6] == '2') {
-			p += 7;
-			string_append(game, *start, (p - *start));
-			*start = p;
-			return (int)(p - p_org);
-		}
-
+			strncpy(game,*start,p-(*start));
+			game[p-*start]=0;
+			*start=p;
+			return (p-p_org);
+			}
+		if(p[0]=='1' && p[1]=='/' && p[2]=='2' && p[3]=='-' && p[4]=='1' && p[5]== '/' && p[6]=='2')
+			{
+			p+=7;
+			strncpy(game,*start,p-(*start));
+			game[p-*start]=0;
+			*start=p;
+			return (p-p_org);
+			}
 		p++;
-	}
-
-	if (headersdone) {
-		string_append(game, *start, (p - *start));
-		*start = p;
-		return (int)(p - p_org);
-	}
-
+		}
+	
 	return 0;
 }
 
-int PDNparseGetnextheader(const char **start, char *header, int maxlen)
-{
-	/* getnextheader */
 
+int PDNparseGetnextheader(char **start,char *header)
+	{
+	/* getnextheader */
 	/* searches a header in buffer, starting at **start. a header
 	is defined as the next complete string which is enclosed 
 	between square brackets [ HEADER ]. 
@@ -196,48 +199,41 @@ int PDNparseGetnextheader(const char **start, char *header, int maxlen)
 	if a header is found, getnextheader sets **start
 	to the next character after the header.
 	the header is returned in *header */
-	const char *p, *q;
-	int i, quotecount;
-
-	if (*start == 0)
-		return 0;
-	p = *start;
-	while (*p != '[' && *p != 0)
+	
+	  
+	char *p,*q;
+	int i;
+	
+	if(*start==0) return 0;
+	p=*start;
+	while (*p!='[' && *p!=0)
 		p++;
-
 	/* if no opening brace is found... */
-	if (*p == 0)
-		return 0;
+	if(*p==0) return 0;
 
-	q = p + 1;
-	i = 0;
-	quotecount = 0;
-	while ((quotecount < 2 || *q != ']') && *q != 0) {
-		if (i < maxlen)
-			header[i] = *q;
-		if (*q == '"')
-			++quotecount;
+	q=p+1;i=0;
+	while(*q!=']' && *q!=0)
+		{
+		header[i]=*q;
 		q++;
 		i++;
-	}
-
+		}
 	// terminate header with a 0
-	header[std::min(i, maxlen - 1)] = 0;
-
+	header[i]=0;
+	
 	/* if no closing brace is found */
-	if (*q == 0)
-		return 0;
+	if(*q==0) return 0;
 
 	/* ok, we have found a header it is written to *header, now 
 		we set the start pointer which tells where to continue searching*/
-	*start = q + 1;
+	*start=q+1;
 	return 1;
 }
 
-int PDNparseGetnexttag(const char **start, char *tag, int maxlen)
-{
-	/* getnexttag */
 
+int PDNparseGetnexttag(char **start,char *tag)
+	{
+	/* getnexttag */
 	/* searches a tag in buffer, starting at **start. a tag
 	is defined as the next complete string which is enclosed 
 	between "s - "TAG". 
@@ -246,58 +242,74 @@ int PDNparseGetnexttag(const char **start, char *tag, int maxlen)
 	if a tag is found, getnexttag sets **start
 	to the next character after the header.
 	the tag is returned in *tag */
-	const char *p, *q;
+		  
+	char *p,*q;
 	int i;
-
-	if ((*start) == 0)
-		return 0;
-	p = (*start);
-	while (!is_pdnquote(*p) && *p != 0)
+	
+	if((*start)==0) return 0;
+	p=(*start);
+	while (*p!='"' && *p!=0)
 		p++;
-
 	/* if no opening " is found... */
-	if (*p == 0)
-		return 0;
+	if(*p==0) return 0;
 
-	q = p + 1;
-	i = 0;
-	while (!is_pdnquote(*q) && *q != 0) {
-		if (i < maxlen - 1)
-			tag[i] = *q;
+	q=p+1;i=0;
+	while(*q!='"' && *q!=0)
+		{
+		tag[i]=*q;
 		q++;
 		i++;
-	}
-
-	tag[std::min(i, maxlen - 1)] = 0;
+		}
+	tag[i]=0;
 
 	/* if no closing " is found */
-	if (*q == 0)
-		return 0;
+	if(*q==0) return 0;
 
 	/* ok, we have found a tag, it is written to *tag, now 
 		we set the start pointer */
-	(*start) = q + 1;
+	(*start)=q+1;
 	return 1;
 }
 
-inline int is_pdnspace(uint8_t val)
+
+__inline int is_pdn_space(int val)
 {
-	return(isspace(val) || val == UTF8_NOBREAK_SPACE);
+	return(val == ' ' || val == '\t' || val == '\r' || val == '\n');
 }
 
-inline int is_pdn_move_sep(int val)
+
+__inline int is_pdn_move_sep(int val)
 {
 	return(val == '-' || tolower(val) == 'x');
 }
 
-inline void trim_trailing_whitespace(char *buf, int len)
+
+/*
+ * Return true if there is a quote character on this line after *p.
+ * Normally we stop parsing a 'fluff' token if we see a number, since that number
+ * could be part of a move.  But in case the number is part of the name in a header,
+ * like [Player1 "John Smith"] we need to return the token as Player1.
+ */
+/*
+__inline int line_has_quote(char *p)
+{
+return 0;	
+for ( ; *p && *p != '\n' && *p != '\r'; ++p)
+		if (*p == '"')
+			return(1);
+	return(0);
+}*/
+
+
+__inline void trim_trailing_whitespace(char *buf, int len)
 {
 	char *p;
 
-	for (p = buf + len; p > buf && is_pdnspace(*(p - 1)); --p)
+	for (p = buf + len; p > buf && is_pdn_space(*(p - 1)); --p)
 		;
 	*p = 0;
 }
+
 
 /*
  * Extract the next token from a pdn buffer.
@@ -315,16 +327,16 @@ inline void trim_trailing_whitespace(char *buf, int len)
  * The function return value is true if a token is successfully parsed.
  * If we reach the end of the pdn buffer and found nothing but whitespace, the return value is false.
  */
-int PDNparseGetnextPDNtoken(const char **start, char *token, int maxlen)
+int PDNparseGetnextPDNtoken(char **start, char *token)
 {
 	int len = 0;
 	PDN_PARSE_STATE state;
 	int tokentype = PDN_DONE;
-	const char *p, *possible_end, *tok_start;
+	char *p, *possible_end, *tok_start;
 
 	/* Skip past leading white space. */
 	p = (*start);
-	while (is_pdnspace(*p))
+	while (is_pdn_space(*p))
 		++p;
 
 	if (!*p)
@@ -337,7 +349,7 @@ int PDNparseGetnextPDNtoken(const char **start, char *token, int maxlen)
 		switch (state) {
 		case PDN_IDLE:
 			/* We are only in idle until we see the first non-space. */
-			if (isdigit((uint8_t)*p))
+			if (isdigit(*p) /*&& !line_has_quote(p)*/)
 				state = PDN_READING_FROM;
 			else if (*p == '{')
 				state = PDN_CURLY_COMMENT;
@@ -345,19 +357,20 @@ int PDNparseGetnextPDNtoken(const char **start, char *token, int maxlen)
 			else if (*p == '(')
 				state = PDN_NEMESIS_COMMENT;
 #endif
-			else if (!is_pdnspace(*p))
+			else if (!is_pdn_space(*p))
 				state = PDN_FLUFF;
 			++p;
 			break;
 
+		
 		case PDN_FLUFF:
 			/* We saw something that is not strict pdn.  Keep tossing this stuff
 			 * until we see something we recognize, then return the fluff as a non-move.
 			 */
 			tokentype = PDN_FLUFF;
-			if (isdigit((uint8_t)*p) || *p == '{' || *p == '(' || is_pdnquote(*p)) {
+			if (isdigit(*p) || *p == '{' || *p == '(' || *p == '"') {
 				state = PDN_DONE;
-				len = std::min((int)(p - tok_start), maxlen - 1);
+				len = p - tok_start;
 				memcpy(token, tok_start, len);
 				token[len] = 0;
 				*start = p;
@@ -371,7 +384,7 @@ int PDNparseGetnextPDNtoken(const char **start, char *token, int maxlen)
 			if (*p == '}') {
 				state = PDN_DONE;
 				++p;
-				len = std::min((int)(p - tok_start), maxlen - 1);
+				len = p - tok_start;
 				memcpy(token, tok_start, len);
 				token[len] = 0;
 				*start = p;
@@ -381,14 +394,13 @@ int PDNparseGetnextPDNtoken(const char **start, char *token, int maxlen)
 			break;
 
 #ifdef NEMESIS
-
 		/* check for comment nemesis-style*/
 		case PDN_NEMESIS_COMMENT:
 			/* Reading a comment in parenthesis. */
 			if (*p == ')') {
 				state = PDN_DONE;
 				++p;
-				len = std::min((int)(p - tok_start), maxlen - 1);
+				len = p - tok_start;
 				memcpy(token, tok_start, len);
 				token[len] = 0;
 				*start = p;
@@ -399,9 +411,8 @@ int PDNparseGetnextPDNtoken(const char **start, char *token, int maxlen)
 #endif
 
 		case PDN_READING_FROM:
-			if (isdigit((uint8_t)*p))
+			if (isdigit(*p))
 				++p;
-
 			/* If we get a forward slash then its a good chance we have a game draw result. */
 			else if (*p == '/' && strncmp(p - 1, "1/2-1/2", 7) == 0) {
 				state = PDN_DONE;
@@ -418,14 +429,13 @@ int PDNparseGetnextPDNtoken(const char **start, char *token, int maxlen)
 			/* Here we allow white space or a move separator.  Anything else
 			 * means its not a move and we call it fluff.
 			 */
-			if (is_pdnspace(*p))
+			if (is_pdn_space(*p))
 				++p;
 			else if (is_pdn_move_sep(*p)) {
 				++p;
 				state = PDN_WAITING_TO;
 			}
 			else {
-
 				/* Its not a space or move separator, so this is non-pdn fluff. */
 				state = PDN_FLUFF;
 			}
@@ -435,41 +445,38 @@ int PDNparseGetnextPDNtoken(const char **start, char *token, int maxlen)
 			/* Here we allow white space or a move number.  Anything else 
 			 * means its not a move and we call it fluff.
 			 */
-			if (isdigit((uint8_t)*p)) {
+			if (isdigit(*p)) {
 				++p;
 				state = PDN_READING_TO;
 			}
-			else if (is_pdnspace(*p))
+			else if (is_pdn_space(*p))
 				++p;
 			else {
-
 				/* Its not a space or move separator, so this is non-pdn fluff. */
 				state = PDN_FLUFF;
 			}
 			break;
 
 		case PDN_READING_TO:
-			if (isdigit((uint8_t)*p))
+			if (isdigit(*p))
 				++p;
 			else if (is_pdn_move_sep(*p)) {
-				possible_end = p;	/* Remember in case this was the end of the move. */
+				possible_end = p;			/* Remember in case this was the end of the move. */
 				++p;
 				state = PDN_WAITING_OPTIONAL_TO;
 			}
-			else if (is_pdnspace(*p)) {
-
+			else if (is_pdn_space(*p)) {
 				/* This is normally the end of the move, but maybe its just a space
 				 * before another jump move separator. 
 				 */
-				possible_end = p;	/* Remember in case this was the end of the move. */
+				possible_end = p;			/* Remember in case this was the end of the move. */
 				++p;
 				state = PDN_WAITING_OPTIONAL_SEP;
 			}
 			else {
-
 				/* Finished reading a valid move. */
 				state = PDN_DONE;
-				len = std::min((int)(p - tok_start), maxlen - 1);
+				len = p - tok_start;
 				memcpy(token, tok_start, len);
 				token[len] = 0;
 				*start = p;
@@ -477,17 +484,16 @@ int PDNparseGetnextPDNtoken(const char **start, char *token, int maxlen)
 			break;
 
 		case PDN_WAITING_OPTIONAL_SEP:
-			if (is_pdnspace(*p))
+			if (is_pdn_space(*p))
 				++p;
 			else if (is_pdn_move_sep(*p)) {
 				++p;
 				state = PDN_WAITING_OPTIONAL_TO;
 			}
 			else {
-
 				/* No move separator, roll back to the end of move. */
 				state = PDN_DONE;
-				len = std::min((int)(possible_end - tok_start), maxlen - 1);
+				len = possible_end - tok_start;
 				memcpy(token, tok_start, len);
 				token[len] = 0;
 				*start = possible_end;
@@ -498,20 +504,18 @@ int PDNparseGetnextPDNtoken(const char **start, char *token, int maxlen)
 			/* Here we allow white space or a move number.  Anything else 
 			 * means its not more jump moves and we roll back to the end of the valid move.
 			 */
-			if (isdigit((uint8_t)(*p))) {
-
+			if (isdigit(*p)) {
 				/* This is now part of a good move, so we can cancel any previous rollback point. */
 				possible_end = 0;
 				++p;
 				state = PDN_READING_TO;
 			}
-			else if (is_pdnspace(*p))
+			else if (is_pdn_space(*p))
 				++p;
 			else {
-
 				/* We did not get another 'to' square.  Return the valid move that we already passed. */
 				state = PDN_DONE;
-				len = std::min((int)(possible_end - tok_start), maxlen - 1);
+				len = possible_end - tok_start;
 				memcpy(token, tok_start, len);
 				token[len] = 0;
 				*start = possible_end;
@@ -524,32 +528,26 @@ int PDNparseGetnextPDNtoken(const char **start, char *token, int maxlen)
 	 * Finish up whatever we were doing.
 	 */
 	if (!*p) {
-		if
-		(
-			state == PDN_WAITING_SEP ||
-			state == PDN_WAITING_TO ||
-			state == PDN_WAITING_OPTIONAL_SEP ||
-			state == PDN_WAITING_OPTIONAL_TO
-		) {
+		if (state == PDN_WAITING_SEP || state == PDN_WAITING_TO || state == PDN_WAITING_OPTIONAL_SEP ||
+						state == PDN_WAITING_OPTIONAL_TO) {
 			if (possible_end) {
-				len = std::min((int)(possible_end - tok_start), maxlen - 1);
+				len = possible_end - tok_start;
 				memcpy(token, tok_start, len);
 				token[len] = 0;
 				*start = possible_end;
-			}
+				}
 			else {
-				len = std::min((int)(p - tok_start), maxlen - 1);
+				len = p - tok_start;
 				memcpy(token, tok_start, len);
 				token[len] = 0;
 				*start = p;
-			}
+				}
 
 			/* Trim any trailing whitespace in token. */
 			trim_trailing_whitespace(token, len);
 			return(tokentype);
 		}
-
-		len = std::min((int)(p - tok_start), maxlen - 1);
+		len = p - tok_start;
 		memcpy(token, tok_start, len);
 		token[len] = 0;
 		*start = p;
@@ -561,31 +559,31 @@ int PDNparseGetnextPDNtoken(const char **start, char *token, int maxlen)
 	return(tokentype);
 }
 
+
 /*
- * Parse a substring that may contain a checkers move, e.g. 17-21 or 2x10, or
- * a fully qualified jump move, e.g. 8x15x24x31x22.
- * If a valid move is parsed, return the list of square numbers in vector move, and the function return value is true.
+ * Parse a substring that may contain a checkers move, e.g. 17-21 or 2x10.
+ * If a valid move is parsed, return the *from and *to move numbers and the function return value is true.
  * If a valid move is not parsed, the function return value is false.
  * Allow white space anywhere between the numbers and the move separator, e.g. 1 - 5
  * Allow non-numeric junk that might be appended to the tail end of the 'to' square, e.g. 17-21,foo.
  * Allow non-numeric junk that might come before the move, as in hello2-6
+ * Allow jump moves that contain intermediate square numbers, as in 8x15x24x31x22.
  */
-int PDNparseMove(char *token, Squarelist &move)
+int PDNparseTokentonumbers(char *token, int *from, int *to)
 {
-	int i, square;
-	int len;
+	int i, len;
 	PDN_PARSE_STATE state;
 
-	len = (int)strlen(token);
-	move.clear();
-	for (i = 0, state = PDN_IDLE; i < len;) {
+	len = strlen(token);
+
+	for (i = 0, state = PDN_IDLE; i < len; ) {
 		switch (state) {
 		case PDN_IDLE:
 			/* In idle we have't seen the beginning of a move yet.  Skip past anything
 			 * that isn't a number.
 			 */
-			if (isdigit((uint8_t) token[i])) {
-				square = token[i] - '0';
+			if (isdigit(token[i])) {
+				*from = token[i] - '0';
 				state = PDN_READING_FROM;
 			}
 			else if (token[i] == '(' || token[i] == '{')
@@ -600,16 +598,14 @@ int PDNparseMove(char *token, Squarelist &move)
 			/* Take more digits of the from square, else defer to the state machine
 			 * to handle anything that isn't a digit.
 			 */
-			if (isdigit((uint8_t) token[i])) {
-				square = 10 * square + token[i] - '0';
+			if (isdigit(token[i])) {
+				*from = 10 * *from + token[i] - '0';
 				++i;
 			}
 			else if (token[i] == '/')
-				return(0);	/* dont allow slashes in moves, its probably a 1/2-1/2. */
-			else {
-				move.append(square);
+				return(0);					/* dont allow slashes in moves, its probably a 1/2-1/2. */
+			else
 				state = PDN_WAITING_SEP;
-			}
 			break;
 
 		case PDN_WAITING_SEP:
@@ -621,24 +617,21 @@ int PDNparseMove(char *token, Squarelist &move)
 
 		case PDN_WAITING_TO:
 			/* Ignore anything but a digit here. */
-			if (isdigit((uint8_t) token[i])) {
-				square = token[i] - '0';
+			if (isdigit(token[i])) {
+				*to = token[i] - '0';
 				state = PDN_READING_TO;
 			}
-
 			++i;
 			break;
 
 		case PDN_READING_TO:
 			/* Continue reading the digits of the to square. */
-			if (isdigit((uint8_t) token[i])) {
-				square = 10 * square + token[i] - '0';
+			if (isdigit(token[i])) {
+				*to = 10 * *to + token[i] - '0';
 				++i;
 			}
-			else {
-				move.append(square);
+			else
 				state = PDN_WAITING_OPTIONAL_SEP;
-			}
 			break;
 
 		case PDN_WAITING_OPTIONAL_SEP:
@@ -651,18 +644,14 @@ int PDNparseMove(char *token, Squarelist &move)
 	}
 
 	/* If we left in a reasonable termination state, then it's a complete and valid move. */
-	if (state == PDN_WAITING_OPTIONAL_SEP)
+	if (state == PDN_WAITING_OPTIONAL_SEP || state == PDN_READING_TO)
 		return(1);
-	else if (state == PDN_READING_TO) {
-		move.append(square);
-		return(1);
-	}
 	else
 		return(0);			/* not a move. */
 }
 
-int PDNparseGetnexttoken(const char **start, char *token, int maxlen)
-{
+int PDNparseGetnexttoken(char **start,char *token)
+	{
 	/*getnexttoken 
 	gets the next token in buffer, starting at start. a token
 	is defined as the next character sequence till a whitespace.
@@ -675,84 +664,80 @@ int PDNparseGetnexttoken(const char **start, char *token, int maxlen)
 	if a token is found, getnexttoken sets **start
 	to the next character after the token.
 	the token is returned in *token */
-	const char *p, *q;
+		  
+	char *p,*q;
 	int i;
-
-	if ((*start) == 0)
+	
+	if((*start)==0) 
 		return 0;
-	p = (*start);
+	p=(*start);
 
-	// skip leading whitespace characters
-	while (is_pdnspace((uint8_t)*p))
+	// skip leading whitespace characters 
+	while (*p==' ' || *p=='\n' || *p=='\t' || *p=='\r')
 		*p++;
-
-	i = 0;
-	q = p;
-
-	// check for comment
-	if (*p == '{') {
-
-		// comment
-		while (*p != '}' && *p != 0) {
-			if (i < maxlen - 1)
-				token[i] = *p;
+	
+	i=0;
+	q=p;
+	
+	// check for comment 
+	if (*p=='{')
+		// comment 
+		{
+		while (*p!='}' && *p!=0)
+			{
+			token[i]=*p;
 			p++;
 			i++;
-		}
-
-		*start = p + 1;
-		i = std::min(i, maxlen - 2);
-		token[i] = '}';
-		token[i + 1] = 0;
+			}
+		*start=p+1;
+		token[i]='}';
+		token[i+1]=0;
 		return 1;
-	}
-
+		}
 #ifdef NEMESIS
 	// check for comment nemesis-style
-	if (*p == '(') {
-
-	// comment
-		while (*p != ')' && *p != 0) {
-			if (i < maxlen - 1)
-				token[i] = *p;
+	if (*p=='(')
+		// comment 
+		{
+		while (*p!=')' && *p!=0)
+			{
+			token[i]=*p;
 			p++;
 			i++;
-		}
-
-		*start = p + 1;
-		i = std::min(i, maxlen - 2);
-		token[i] = ')';
-		token[i + 1] = 0;
+			}
+		*start=p+1;
+		token[i]=')';
+		token[i+1]=0;
 		return 1;
-	}
+		}
 #endif
-	else {
 
-		// normal token
-		while (!is_pdnspace((uint8_t) *p) && *p != 0 && *p != '.') {
-			if (i < maxlen - 1)
-				token[i] = *p;
+	else
+		{
+		// normal token 
+		while (*p!=' ' && *p!='\n' && *p!='\r' && *p!=0 && *p!='.' && *p!='\t')
+			{
+			token[i]=*p;
 			p++;
 			i++;
+			}
 		}
-	}
-
-	// if no end of token is found
-	if (i == 0)
+	// if no end of token is found 
+	if(*p==0) 
 		return 0;
 
-	// if we terminated with a full stop (.) ,add it
-	if (*p == '.') {
-		i = std::min(i, maxlen - 2);
-		token[i] = *p;
+	// if we terminated with a full stop (.) ,add it 
+	if(*p=='.')
+		{
+		token[i]=*p;
 		p++;
 		i++;
-	}
+		}
 
-	token[std::min(i, maxlen - 1)] = 0;
+	token[i]=0;
 
-	// we have found a token, it is written to *token, now
-	//	we set the start pointer
-	(*start) = p ;
+	// we have found a token, it is written to *token, now 
+	//	we set the start pointer 
+	(*start)=p+1;
 	return 1;
 }

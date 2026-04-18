@@ -3,804 +3,579 @@
 // part of checkerboard
 //
 // implements various utility functions
+
 #include <windows.h>
 #include <stdio.h>
 #include <time.h>
-#include <cstdarg>
+#include <commctrl.h>
 #include "standardheader.h"
-#include "cb_interface.h"
 #include "CBstructs.h"
 #include "CBconsts.h"
 #include "CheckerBoard.h"
 #include "coordinates.h"
 #include "utility.h"
-#include "fen.h"
+
+// the following array describes the ACF three-move-deck. three[n][0-1-2] are
+// the three move numbers which have to be executed after generating the movelist
+// in all three positions. n+1 is the number used in the ACF-deck. 
+// three[n][4] is the qualifier of the opening, 0,1,2,3 for normal, mailplay and probably lost, 3
+// is also normal, but in CTD
+
+int three[174][4]=
+	{{0,6,0,0},{0,6,1,0},{0,6,2,2},{0,4,0,0},{0,5,2,3},{0,5,3,1},{0,5,4,3},{0,5,5,3},{0,5,6,1},{0,5,7,3},
+	{0,2,1,0},{0,2,2,3},{0,2,3,2},{0,2,4,0},{0,2,5,3},{0,2,6,1},{0,2,7,0},{0,3,1,0},{0,3,2,0},{0,3,3,0},
+	{0,3,4,1},{0,3,6,0},{0,0,1,0},{0,0,2,0},{0,0,3,3},{0,0,4,2},{0,0,5,0},{0,0,6,0},{0,1,1,0},{0,1,2,0},
+	{0,1,3,0},{0,1,4,0},{0,1,5,0},{0,1,6,1},{0,1,7,2},{1,4,1,0},{1,4,2,3},{1,4,4,0},{1,4,5,0},{1,5,1,0},
+	{1,5,3,0},{1,5,4,0},{1,5,5,0},{1,5,6,2},{1,5,0,2},{1,2,0,3},{1,3,2,0},{1,3,4,2},{1,3,6,0},{1,3,1,3},
+
+	{1,0,2,0},{1,0,4,2},{1,0,5,0},{1,0,6,0},{1,1,2,0},{1,1,4,0},{1,1,5,0},{1,1,6,3},{2,4,2,3},{2,4,3,1},
+	{2,4,4,1},{2,4,5,1},{2,4,0,3},{2,5,1,3},{2,5,2,3},{2,5,4,0},{2,5,5,0},{2,5,6,3},{2,2,0,0},{2,3,2,3},
+	{2,3,3,3},{2,3,5,3},{2,3,6,0},{2,3,1,3},{2,0,2,3},{2,0,3,0},{2,0,5,2},{2,0,6,0},{2,0,1,3},{2,1,2,0},
+	{2,1,3,0},{2,1,5,0},{2,1,6,0},{2,1,1,3},{3,6,2,3},{3,6,3,3},{3,6,4,3},{3,6,5,2},{3,6,6,3},{3,6,0,0},
+	{3,4,2,3},{3,4,3,0},{3,4,4,3},{3,4,5,2},{3,4,6,0},{3,4,1,3},{3,5,0,0},{3,2,1,3},{3,2,2,0},{3,2,4,0},
+
+	{3,2,5,0},{3,2,6,3},{3,3,1,0},{3,3,2,0},{3,3,5,1},{3,0,0,0},{3,1,2,0},{3,1,3,0},{3,1,6,2},{3,1,1,3},
+	{4,6,3,0},{4,6,4,0},{4,6,5,0},{4,6,6,2},{4,6,1,3},{4,4,3,0},{4,4,4,0},{4,4,0,0},{4,4,1,0},{4,5,0,0},
+	{4,2,2,0},{4,2,4,0},{4,2,5,0},{4,2,6,3},{4,2,0,3},{4,3,2,0},{4,3,3,0},{4,3,4,0},{4,0,0,0},{4,1,3,0},
+	{4,1,7,3},{4,1,0,0},{5,6,2,3},{5,6,3,0},{5,6,4,3},{5,6,5,0},{5,6,6,2},{5,6,1,0},{5,4,2,0},{5,4,3,0},
+	{5,4,4,1},{5,4,1,0},{5,5,2,3},{5,5,3,0},{5,5,7,2},{5,5,0,0},{5,5,1,0},{5,2,2,3},{5,2,3,0},{5,2,5,0},
+
+	{5,2,6,0},{5,2,1,0},{5,3,0,1},{5,0,1,3},{5,0,2,0},{5,0,6,2},{5,0,0,0},{5,1,1,3},{5,1,0,0},{6,6,3,3},
+	{6,6,4,3},{6,6,0,3},{6,6,1,0},{6,4,0,0},{6,4,1,0},{6,5,0,3},{6,5,1,3},{6,2,4,2},{6,2,0,3},{6,2,1,0},
+	{6,3,0,2},{6,0,0,0},{6,1,1,0},{6,1,5,1}};
+
+FILE *cblogfile;
 
 
-/* The ACF list of 3-move ballots.
- * The ACF opening number is one greater than the index into the table.
- */
-Three_move three_move_table[174] = {
-	{"9-13 21-17 5-9", OP_CROSSBOARD, nullptr},						/* ACF #1 */
-	{"9-13 21-17 6-9", OP_CROSSBOARD, nullptr},						/* ACF #2 */
-	{"9-13 21-17 10-14", OP_BARRED, nullptr},						/* ACF #3 */
-	{"9-13 22-17 13x22", OP_CROSSBOARD, nullptr},					/* ACF #4 */
-	{"9-13 22-18 6-9", OP_CROSSBOARD | OP_CTD, "Dreaded Edinburgh"},	/* ACF #5 */
-	{"9-13 22-18 10-14", OP_MAILPLAY, "Inferno"},					/* ACF #6 */
-	{"9-13 22-18 10-15", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #7 */
-	{"9-13 22-18 11-15", OP_CROSSBOARD | OP_CTD, "Edinburgh Single"},	/* ACF #8 */
-	{"9-13 22-18 11-16", OP_MAILPLAY, "Wilderness I"},				/* ACF #9 */
-	{"9-13 22-18 12-16", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #10 */
-	{"9-13 23-18 5-9", OP_CROSSBOARD, nullptr},						/* ACF #11 */
-	{"9-13 23-18 6-9", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #12 */
-	{"9-13 23-18 10-14", OP_BARRED, nullptr},						/* ACF #13 */
-	{"9-13 23-18 10-15", OP_CROSSBOARD, nullptr},					/* ACF #14 */
-	{"9-13 23-18 11-15", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #15 */
-	{"9-13 23-18 11-16", OP_MAILPLAY, "Wilderness II"},				/* ACF #16 */
-	{"9-13 23-18 12-16", OP_CROSSBOARD, nullptr},					/* ACF #17 */
-	{"9-13 23-19 5-9", OP_CROSSBOARD, nullptr},						/* ACF #18 */
-	{"9-13 23-19 6-9", OP_CROSSBOARD, nullptr},						/* ACF #19 */
-	{"9-13 23-19 10-14", OP_CROSSBOARD, nullptr},					/* ACF #20 */
-	{"9-13 23-19 10-15", OP_MAILPLAY, nullptr},						/* ACF #21 */
-	{"9-13 23-19 11-16", OP_CROSSBOARD, nullptr},					/* ACF #22 */
-	{"9-13 24-19 5-9", OP_CROSSBOARD, nullptr},						/* ACF #23 */
-	{"9-13 24-19 6-9", OP_CROSSBOARD, nullptr},						/* ACF #24 */
-	{"9-13 24-19 10-14", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #25 */
-	{"9-13 24-19 10-15", OP_BARRED, nullptr},						/* ACF #26 */
-	{"9-13 24-19 11-15", OP_CROSSBOARD, nullptr},					/* ACF #27 */
-	{"9-13 24-19 11-16", OP_CROSSBOARD, nullptr},					/* ACF #28 */
-	{"9-13 24-20 5-9", OP_CROSSBOARD, nullptr},						/* ACF #29 */
-	{"9-13 24-20 6-9", OP_CROSSBOARD, nullptr},						/* ACF #30 */
-	{"9-13 24-20 10-14", OP_CROSSBOARD, nullptr},					/* ACF #31 */
-	{"9-13 24-20 10-15", OP_CROSSBOARD, nullptr},					/* ACF #32 */
-	{"9-13 24-20 11-15", OP_CROSSBOARD, nullptr},					/* ACF #33 */
-	{"9-13 24-20 11-16", OP_MAILPLAY, "Twilight Zone"},				/* ACF #34 */
-	{"9-13 24-20 12-16", OP_BARRED, "Dundee Barred"},				/* ACF #35 */
-	{"9-14 22-17 5-9", OP_CROSSBOARD, nullptr},						/* ACF #36 */
-	{"9-14 22-17 6-9", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #37 */
-	{"9-14 22-17 11-15", OP_CROSSBOARD, nullptr},					/* ACF #38 */
-	{"9-14 22-17 11-16", OP_CROSSBOARD, nullptr},					/* ACF #39 */
-	{"9-14 22-18 5-9", OP_CROSSBOARD, nullptr},						/* ACF #40 */
-	{"9-14 22-18 10-15", OP_CROSSBOARD, nullptr},					/* ACF #41 */
-	{"9-14 22-18 11-15", OP_CROSSBOARD, nullptr},					/* ACF #42 */
-	{"9-14 22-18 11-16", OP_CROSSBOARD, nullptr},					/* ACF #43 */
-	{"9-14 22-18 12-16", OP_BARRED, nullptr},						/* ACF #44 */
-	{"9-14 22-18 14-17", OP_BARRED, nullptr},						/* ACF #45 */
-	{"9-14 23-18 14x23", OP_CROSSBOARD | OP_CTD, "Double Cross"},	/* ACF #46 */
-	{"9-14 23-19 5-9", OP_CROSSBOARD, nullptr},						/* ACF #47 */
-	{"9-14 23-19 10-15", OP_BARRED, "Rattlesnake"},					/* ACF #48 */
-	{"9-14 23-19 11-16", OP_CROSSBOARD, nullptr},					/* ACF #49 */
-	{"9-14 23-19 14-18", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #50 */
-	{"9-14 24-19 5-9", OP_CROSSBOARD, nullptr},						/* ACF #51 */
-	{"9-14 24-19 10-15", OP_BARRED, nullptr},						/* ACF #52 */
-	{"9-14 24-19 11-15", OP_CROSSBOARD, nullptr},					/* ACF #53 */
-	{"9-14 24-19 11-16", OP_CROSSBOARD, nullptr},					/* ACF #54 */
-	{"9-14 24-20 5-9", OP_CROSSBOARD, nullptr},						/* ACF #55 */
-	{"9-14 24-20 10-15", OP_CROSSBOARD, nullptr},					/* ACF #56 */
-	{"9-14 24-20 11-15", OP_CROSSBOARD, nullptr},					/* ACF #57 */
-	{"9-14 24-20 11-16", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #58 */
-	{"10-14 22-17 7-10", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #59 */
-	{"10-14 22-17 9-13", OP_MAILPLAY | OP_CTD, "Black Hole"},		/* ACF #60 */
-	{"10-14 22-17 11-15", OP_MAILPLAY, nullptr},					/* ACF #61 */
-	{"10-14 22-17 11-16", OP_MAILPLAY, "Gemini I"},					/* ACF #62 */
-	{"10-14 22-17 14-18", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #63 */
-	{"10-14 22-18 6-10", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #64 */
-	{"10-14 22-18 7-10", OP_CROSSBOARD | OP_CTD, "Fraser's Inferno"},	/* ACF #65 */
-	{"10-14 22-18 11-15", OP_CROSSBOARD, nullptr},					/* ACF #66 */
-	{"10-14 22-18 11-16", OP_CROSSBOARD, nullptr},					/* ACF #67 */
-	{"10-14 22-18 12-16", OP_CROSSBOARD | OP_CTD, "White Doctor"},	/* ACF #68 */
-	{"10-14 23-18 14x23", OP_CROSSBOARD, nullptr},					/* ACF #69 */
-	{"10-14 23-19 6-10", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #70 */
-	{"10-14 23-19 7-10", OP_CROSSBOARD | OP_CTD, "Diabolical Denny"},	/* ACF #71 */
-	{"10-14 23-19 11-15", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #72 */
-	{"10-14 23-19 11-16", OP_CROSSBOARD, nullptr},					/* ACF #73 */
-	{"10-14 23-19 14-18", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #74 */
-	{"10-14 24-19 6-10", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #75 */
-	{"10-14 24-19 7-10", OP_CROSSBOARD, nullptr},					/* ACF #76 */
-	{"10-14 24-19 11-15", OP_BARRED, nullptr},						/* ACF #77 */
-	{"10-14 24-19 11-16", OP_CROSSBOARD, nullptr},					/* ACF #78 */
-	{"10-14 24-19 14-18", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #79 */
-	{"10-14 24-20 6-10", OP_CROSSBOARD, nullptr},					/* ACF #80 */
-	{"10-14 24-20 7-10", OP_CROSSBOARD, nullptr},					/* ACF #81 */
-	{"10-14 24-20 11-15", OP_CROSSBOARD, nullptr},					/* ACF #82 */
-	{"10-14 24-20 11-16", OP_CROSSBOARD, nullptr},					/* ACF #83 */
-	{"10-14 24-20 14-18", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #84 */
-	{"10-15 21-17 6-10", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #85 */
-	{"10-15 21-17 7-10", OP_CROSSBOARD | OP_CTD, "Octopus"},		/* ACF #86 */
-	{"10-15 21-17 9-13", OP_CROSSBOARD | OP_CTD, "Tyne"},			/* ACF #87 */
-	{"10-15 21-17 9-14", OP_BARRED, nullptr},						/* ACF #88 */
-	{"10-15 21-17 11-16", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #89 */
-	{"10-15 21-17 15-18", OP_CROSSBOARD, nullptr},					/* ACF #90 */
-	{"10-15 22-17 6-10", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #91 */
-	{"10-15 22-17 7-10", OP_CROSSBOARD, nullptr},					/* ACF #92 */
-	{"10-15 22-17 9-13", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #93 */
-	{"10-15 22-17 9-14", OP_BARRED, "Nutcracker"},					/* ACF #94 */
-	{"10-15 22-17 11-16", OP_CROSSBOARD, nullptr},					/* ACF #95 */
-	{"10-15 22-17 15-19", OP_CROSSBOARD | OP_CTD, "Skull-Cracker"},	/* ACF #96 */
-	{"10-15 22-18 15x22", OP_CROSSBOARD, nullptr},					/* ACF #97 */
-	{"10-15 23-18 6-10", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #98 */
-	{"10-15 23-18 7-10", OP_CROSSBOARD, nullptr},					/* ACF #99 */
-	{"10-15 23-18 9-14", OP_CROSSBOARD, nullptr},					/* ACF #100 */
-	{"10-15 23-18 11-16", OP_CROSSBOARD, nullptr},					/* ACF #101 */
-	{"10-15 23-18 12-16", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #102 */
-	{"10-15 23-19 6-10", OP_CROSSBOARD, nullptr},					/* ACF #103 */
-	{"10-15 23-19 7-10", OP_CROSSBOARD, nullptr},					/* ACF #104 */
-	{"10-15 23-19 11-16", OP_MAILPLAY, "Gemini II"},				/* ACF #105 */
-	{"10-15 24-19 15x24", OP_CROSSBOARD, nullptr},					/* ACF #106 */
-	{"10-15 24-20 6-10", OP_CROSSBOARD, nullptr},					/* ACF #107 */
-	{"10-15 24-20 7-10", OP_CROSSBOARD, nullptr},					/* ACF #108 */
-	{"10-15 24-20 11-16", OP_BARRED, nullptr},						/* ACF #109 */
-	{"10-15 24-20 15-19", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #110 */
-	{"11-15 21-17 8-11", OP_CROSSBOARD, nullptr},					/* ACF #111 */
-	{"11-15 21-17 9-13", OP_CROSSBOARD, nullptr},					/* ACF #112 */
-	{"11-15 21-17 9-14", OP_CROSSBOARD, nullptr},					/* ACF #113 */
-	{"11-15 21-17 10-14", OP_BARRED, nullptr},						/* ACF #114 */
-	{"11-15 21-17 15-19", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #115 */
-	{"11-15 22-17 8-11", OP_CROSSBOARD, nullptr},					/* ACF #116 */
-	{"11-15 22-17 9-13", OP_CROSSBOARD, nullptr},					/* ACF #117 */
-	{"11-15 22-17 15-18", OP_CROSSBOARD, nullptr},					/* ACF #118 */
-	{"11-15 22-17 15-19", OP_CROSSBOARD, nullptr},					/* ACF #119 */
-	{"11-15 22-18 15x22", OP_CROSSBOARD, nullptr},					/* ACF #120 */
-	{"11-15 23-18 8-11", OP_CROSSBOARD, nullptr},					/* ACF #121 */
-	{"11-15 23-18 9-14", OP_CROSSBOARD, nullptr},					/* ACF #122 */
-	{"11-15 23-18 10-14", OP_CROSSBOARD, nullptr},					/* ACF #123 */
-	{"11-15 23-18 12-16", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #124 */
-	{"11-15 23-18 15-19", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #125 */
-	{"11-15 23-19 8-11", OP_CROSSBOARD, nullptr},					/* ACF #126 */
-	{"11-15 23-19 9-13", OP_CROSSBOARD, nullptr},					/* ACF #127 */
-	{"11-15 23-19 9-14", OP_CROSSBOARD, nullptr},					/* ACF #128 */
-	{"11-15 24-19 15x24", OP_CROSSBOARD, nullptr},					/* ACF #129 */
-	{"11-15 24-20 8-11", OP_CROSSBOARD, nullptr},					/* ACF #130 */
-	{"11-15 24-20 12-16", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #131 */
-	{"11-15 24-20 15-18", OP_CROSSBOARD, nullptr},					/* ACF #132 */
-	{"11-16 21-17 7-11", OP_CROSSBOARD | OP_CTD, "Octopus"},		/* ACF #133 */
-	{"11-16 21-17 8-11", OP_CROSSBOARD, nullptr},					/* ACF #134 */
-	{"11-16 21-17 9-13", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #135 */
-	{"11-16 21-17 9-14", OP_CROSSBOARD, nullptr},					/* ACF #136 */
-	{"11-16 21-17 10-14", OP_BARRED, "Shark"},						/* ACF #137 */
-	{"11-16 21-17 16-20", OP_CROSSBOARD, nullptr},					/* ACF #138 */
-	{"11-16 22-17 7-11", OP_CROSSBOARD, nullptr},					/* ACF #139 */
-	{"11-16 22-17 8-11", OP_CROSSBOARD, nullptr},					/* ACF #140 */
-	{"11-16 22-17 9-13", OP_MAILPLAY, nullptr},						/* ACF #141 */
-	{"11-16 22-17 16-20", OP_CROSSBOARD, nullptr},					/* ACF #142 */
-	{"11-16 22-18 7-11", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #143 */
-	{"11-16 22-18 8-11", OP_CROSSBOARD, nullptr},					/* ACF #144 */
-	{"11-16 22-18 10-15", OP_BARRED, "Cheetah"},					/* ACF #145 */
-	{"11-16 22-18 16-19", OP_CROSSBOARD, nullptr},					/* ACF #146 */
-	{"11-16 22-18 16-20", OP_CROSSBOARD, nullptr},					/* ACF #147 */
-	{"11-16 23-18 7-11", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #148 */
-	{"11-16 23-18 8-11", OP_CROSSBOARD, nullptr},					/* ACF #149 */
-	{"11-16 23-18 9-14", OP_CROSSBOARD, nullptr},					/* ACF #150 */
-	{"11-16 23-18 10-14", OP_CROSSBOARD, nullptr},					/* ACF #151 */
-	{"11-16 23-18 16-20", OP_CROSSBOARD, nullptr},					/* ACF #152 */
-	{"11-16 23-19 16x23", OP_MAILPLAY, "Black Widow"},				/* ACF #153 */
-	{"11-16 24-19 7-11", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #154 */
-	{"11-16 24-19 8-11", OP_CROSSBOARD, nullptr},					/* ACF #155 */
-	{"11-16 24-19 10-15", OP_BARRED, nullptr},						/* ACF #156 */
-	{"11-16 24-19 16-20", OP_CROSSBOARD, nullptr},					/* ACF #157 */
-	{"11-16 24-20 7-11", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #158 */
-	{"11-16 24-20 16-19", OP_CROSSBOARD, nullptr},					/* ACF #159 */
-	{"12-16 21-17 9-13", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #160 */
-	{"12-16 21-17 9-14", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #161 */
-	{"12-16 21-17 16-19", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #162 */
-	{"12-16 21-17 16-20", OP_CROSSBOARD, nullptr},					/* ACF #163 */
-	{"12-16 22-17 16-19", OP_CROSSBOARD, nullptr},					/* ACF #164 */
-	{"12-16 22-17 16-20", OP_CROSSBOARD, nullptr},					/* ACF #165 */
-	{"12-16 22-18 16-19", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #166 */
-	{"12-16 22-18 16-20", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #167 */
-	{"12-16 23-18 9-14", OP_BARRED, nullptr},						/* ACF #168 */
-	{"12-16 23-18 16-19", OP_CROSSBOARD | OP_CTD, nullptr},			/* ACF #169 */
-	{"12-16 23-18 16-20", OP_CROSSBOARD, nullptr},					/* ACF #170 */
-	{"12-16 23-19 16x23", OP_BARRED, nullptr},						/* ACF #171 */
-	{"12-16 24-19 16-20", OP_CROSSBOARD, nullptr},					/* ACF #172 */
-	{"12-16 24-20 8-12", OP_CROSSBOARD, nullptr},					/* ACF #173 */
-	{"12-16 24-20 10-15", OP_MAILPLAY, "Skunk"},					/* ACF #174 */
-};
 
-timemap time_table[] =
-{
-	{ 1, LEVELINSTANT, 0.01 },
-	{ 2, LEVEL01S, 0.1 },
-	{ 3, LEVEL02S, 0.2 },
-	{ 4, LEVEL05S, 0.5 },
-	{ 5, LEVEL1S, 1 },
-	{ 6, LEVEL2S, 2 },
-	{ 7, LEVEL5S, 5 },
-	{ 8, LEVEL10S, 10 },
-	{ 9, LEVEL15S, 15 },
-	{ 10, LEVEL30S, 30 },
-	{ 11, LEVEL1M, 60 },
-	{ 12, LEVEL2M, 120 },
-	{ 13, LEVEL5M, 300 },
-	{ 14, LEVEL15M, 900 },
-	{ 15, LEVEL30M, 1800 },
-	{ 16, LEVELINFINITE, 8600000 },
-};
-
-static char cblogfile_path[MAX_PATH];
-
-extern char g_app_instance_suffix[10];
 
 int initcolorstruct(HWND hwnd, CHOOSECOLOR *ccs, int index)
-{
+	{
 	COLORREF dCustomColors[16];
-	extern CBoptions cboptions;
+	extern struct CBoptions gCBoptions;
 	ccs->lStructSize = (DWORD) sizeof(CHOOSECOLOR);
 	ccs->hwndOwner = (HWND) hwnd;
 	ccs->hInstance = (HWND) NULL;
 	ccs->lpCustColors = dCustomColors;
-	ccs->Flags = CC_RGBINIT | CC_FULLOPEN;
+	ccs->Flags = CC_RGBINIT|CC_FULLOPEN;
 	ccs->lCustData = 0L;
 	ccs->lpfnHook = NULL;
 	ccs->lpTemplateName = (LPSTR) NULL;
-	ccs->rgbResult = cboptions.colors[index];
+	ccs->rgbResult = gCBoptions.colors[index];
 	return 1;
-}
+	}
 
-int FENtoclipboard(HWND hwnd, Board8x8 board8, int color, int gametype)
-{
-	char FENstring[1000];
 
+int FENtoclipboard(HWND hwnd, int board8[8][8], int color, int gametype)
+	{
+	char *FENstring;
+
+	FENstring = malloc(GAMEBUFSIZE);
 	board8toFEN(board8, FENstring, color, gametype);
-	MessageBox(hwnd, FENstring, "printout is", MB_OK);
+	MessageBox(hwnd, FENstring,"printout is",MB_OK);
 	texttoclipboard(FENstring);
+	free(FENstring);
 	return 1;
-}
+	}
 
-int PDNtoclipboard(HWND hwnd, PDNgame &game)
-{
-	std::string gamestring;
+int PDNtoclipboard(HWND hwnd, struct PDNgame *game)
+	{
+	char *gamestring;
 
-	PDNgametoPDNstring(game, gamestring, "\r\n");
-	MessageBox(hwnd, gamestring.c_str(), "printout is", MB_OK);
-	texttoclipboard(gamestring.c_str());
+	// allocate memory for game, print game to memory, call texttoclipboard to 
+	// place it on clipboard.
+	gamestring = malloc(GAMEBUFSIZE);
+	PDNgametoPDNstring(game,gamestring, "\r\n");
+	MessageBox(hwnd,gamestring,"printout is",MB_OK);
+	texttoclipboard(gamestring);
+	free(gamestring);
 	return 1;
-}
+	}
+
 
 int logtofile(char *filename, char *str, char *mode)
-{
+	{
 	// appends the text <str> to the file <filename>
 	FILE *fp;
 	int closed = 0;
 
 	fp = fopen(filename, mode);
-	if (fp == NULL) {
-		closed = _fcloseall();
+	if(fp == NULL)
+		{
+		closed = fcloseall();
 		fp = fopen(filename, mode);
-		if (fp == NULL)
+		if(fp == NULL)
 			return 0;
-	}
+		}
 
 	fprintf(fp, "\n%s", str);
 	fclose(fp);
 
 	return 1;
-}
+	}
 
-int writefile(char *filename, char *mode, char *fmt, ...)
-{
-	FILE *fp;
-	va_list args;
-	va_start(args, fmt);
 
-	fp = fopen(filename, mode);
-	if (!fp)
-		return(1);
-
-	vfprintf(fp, fmt, args);
-	fclose(fp);
-	return(0);
-}
-
-int texttoclipboard(const char *text)
-{
+int texttoclipboard(char *text)
+	{
 	// generic text-to-clipboard: pass a text, and it gets put
 	// on the clipboard
-	size_t size;
 	HGLOBAL hOut;
 	char *gamestring;
 
 	// allocate memory for the game string
-	size = 1 + strlen(text);
-	hOut = GlobalAlloc(GHND | GMEM_DDESHARE, (DWORD)size);
-
+	hOut = GlobalAlloc(GHND|GMEM_DDESHARE, (DWORD) GAMEBUFSIZE);	 
 	// and lock it
-	gamestring = (char *)GlobalLock(hOut);
+	gamestring = GlobalLock(hOut);	
 
-	sprintf(gamestring, "%s", text);
+	sprintf(gamestring,"%s",text);
 
 	GlobalUnlock(hOut);
-	if (OpenClipboard(NULL)) {
+	if(OpenClipboard(NULL))
+		{
 		EmptyClipboard();
 		SetClipboardData(CF_TEXT, hOut);
 		CloseClipboard();
-	}
+		}
 
 	return 1;
-}
+	}
 
 char *textfromclipboard(HWND hwnd, char *str)
-{
+	{
 	// read a text from the clipboard; return it if it is valid text, NULL otherwise
 	// prints an error message in *str if an error occurs
-	char *gamestring;
+	int loadok = 0;
+	char *gamestring = NULL;
 	char *p;
 	HGLOBAL hIn;
-	size_t length;
+	int i;
 
-	gamestring = NULL;
-	if (OpenClipboard(hwnd)) {
+	gamestring = malloc(GAMEBUFSIZE);
+	if(gamestring == NULL)
+		{
+		sprintf(str,"clipboard open failed");
+		return 0;
+		}
+
+	if(OpenClipboard(hwnd))
+		{
 		hIn = GetClipboardData(CF_TEXT);
-		if (hIn != NULL) {
-			p = (char *)GlobalLock(hIn);
-			if (p == NULL) {
-				sprintf(str, "globalloc failed");
+		if(hIn != NULL)
+			{
+			p = GlobalLock(hIn);
+			if(p == NULL)
+				{
+				sprintf(str,"globalloc failed");
 				GlobalUnlock(hIn);
+				free(gamestring);
+				gamestring = NULL;
 				CloseClipboard();
-				return NULL;
-			}
+				return gamestring;
+				}
 
-			length = strlen(p);
-			gamestring = (char *)malloc(length + 1);
-			if (!gamestring) {
-				sprintf(str, "malloc failed");
-				GlobalUnlock(hIn);
-				CloseClipboard();
-				return NULL;
-			}
-
-			strcpy(gamestring, p);
+			// copy data from clipboard 
+			for(i=0;i<GAMEBUFSIZE-1;i++)
+				{
+				gamestring[i]=*p;
+				if(*p==0)
+					break;
+				*p++;
+				}
+			*p=0;
+			gamestring[GAMEBUFSIZE-1] = 0;
+			loadok = 1;
 			GlobalUnlock(hIn);
-		}
-		else {
-			sprintf(str, "no valid clipboard data");
-		}
-
+			}
+		else
+			{
+			sprintf(str,"no valid clipboard data");
+			}
 		CloseClipboard();
-	}
-
+		}
 	return gamestring;
-}
+	}
 
 int fileispresent(char *filename)
-{
+	{
 	// returns 1 if a file with name "filename" is present, 0 otherwise
-	FILE *fp;
 
-	fp = fopen(filename, "r");
-	if (fp != NULL) {
+	FILE *fp;
+	
+	fp = fopen(filename,"r");
+	if(fp != NULL)
+		{
 		fclose(fp);
 		return 1;
-	}
+		}
 	else
 		return 0;
-}
-
-double timelevel_to_time(int level)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(time_table); ++i)
-		if (time_table[i].level == level)
-			return(time_table[i].time);
-
-	/* Shouldn't get here. */
-	assert(0);
-	return(1.0);
-}
-
-int timelevel_to_token(int level)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(time_table); ++i)
-		if (time_table[i].level == level)
-			return(time_table[i].token);
-
-	/* Shouldn't get here. */
-	assert(0);
-	return(LEVEL1S);
-}
-
-int timetoken_to_level(int token)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(time_table); ++i)
-		if (time_table[i].token == token)
-			return(time_table[i].level);
-
-	/* Shouldn't get here. */
-	assert(0);
-	return(5);
-}
-
-double timetoken_to_time(int token)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(time_table); ++i)
-		if (time_table[i].token == token)
-			return(time_table[i].time);
-
-	/* Shouldn't get here. */
-	assert(0);
-	return(1.0);
-}
-
-void checklevelmenu(CBoptions *options, HMENU hmenu, int resource)
-{
-	int i;
-
-	/* Uncheck everything first. */
-	for (i = 0; i < ARRAY_SIZE(time_table); ++i)
-		CheckMenuItem(hmenu, time_table[i].token, MF_UNCHECKED);
-
-	/* Check the selected item. */
-	if (options->use_incremental_time)
-		CheckMenuItem(hmenu, LEVELINCREMENT, MF_CHECKED);
-	else {
-		CheckMenuItem(hmenu, LEVELINCREMENT, MF_UNCHECKED);
-		CheckMenuItem(hmenu, resource, MF_CHECKED);
 	}
-}
 
-void setmenuchecks(CBoptions *CBoptions, HMENU hmenu)
-{
-	// set menu checks
-	if (CBoptions->priority)
-		CheckMenuItem(hmenu, OPTIONSPRIORITY, MF_CHECKED);
-	else
-		CheckMenuItem(hmenu, OPTIONSPRIORITY, MF_UNCHECKED);
+int checklevelmenu(HMENU hmenu,int item, struct CBoptions *CBoptions)
+	{
+	int increment;
 
-	if (CBoptions->highlight)
-		CheckMenuItem(hmenu, OPTIONSHIGHLIGHT, MF_CHECKED);
-	else
-		CheckMenuItem(hmenu, OPTIONSHIGHLIGHT, MF_UNCHECKED);
-
-	if (CBoptions->sound)
-		CheckMenuItem(hmenu, OPTIONSSOUND, MF_CHECKED);
-	else
-		CheckMenuItem(hmenu, OPTIONSSOUND, MF_UNCHECKED);
-
-	if (CBoptions->invert)
-		CheckMenuItem(hmenu, DISPLAYINVERT, MF_CHECKED);
-	else
-		CheckMenuItem(hmenu, DISPLAYINVERT, MF_UNCHECKED);
-
-	if (CBoptions->mirror)
-		CheckMenuItem(hmenu, DISPLAYMIRROR, MF_CHECKED);
-	else
-		CheckMenuItem(hmenu, DISPLAYMIRROR, MF_UNCHECKED);
-
-	if (CBoptions->exact_time)
-		CheckMenuItem(hmenu, LEVELEXACT, MF_CHECKED);
-	else
-		CheckMenuItem(hmenu, LEVELEXACT, MF_UNCHECKED);
-
-	if (CBoptions->numbers)
-		CheckMenuItem(hmenu, DISPLAYNUMBERS, MF_CHECKED);
-	else
-		CheckMenuItem(hmenu, DISPLAYNUMBERS, MF_UNCHECKED);
-
-	if (CBoptions->userbook)
-		CheckMenuItem(hmenu, OPTIONSUSERBOOK, MF_CHECKED);
-	else
-		CheckMenuItem(hmenu, OPTIONSUSERBOOK, MF_UNCHECKED);
-}
-
-
-void cblog_init()
-{
-	FILE *cblogfile;
-
-	// open a log file on startup
-	if (cblogfile_path[0] == 0) {
-		sprintf(cblogfile_path, "%s\\CBlog%s.txt", CBdocuments, g_app_instance_suffix);
-		cblogfile = fopen(cblogfile_path, "w");
-		fclose(cblogfile);
+	CheckMenuItem(hmenu,LEVELINSTANT,MF_UNCHECKED);
+	CheckMenuItem(hmenu,LEVEL1S,MF_UNCHECKED);
+	CheckMenuItem(hmenu,LEVEL2S,MF_UNCHECKED);
+	CheckMenuItem(hmenu,LEVEL5S,MF_UNCHECKED);
+	CheckMenuItem(hmenu,LEVEL10S,MF_UNCHECKED);
+	CheckMenuItem(hmenu,LEVEL15S,MF_UNCHECKED);
+	CheckMenuItem(hmenu,LEVEL30S,MF_UNCHECKED);
+	CheckMenuItem(hmenu,LEVEL1M,MF_UNCHECKED);
+	CheckMenuItem(hmenu,LEVEL2M,MF_UNCHECKED);
+	CheckMenuItem(hmenu,LEVEL5M,MF_UNCHECKED);
+	CheckMenuItem(hmenu,LEVEL15M,MF_UNCHECKED);
+	CheckMenuItem(hmenu,LEVEL30M,MF_UNCHECKED);
+	CheckMenuItem(hmenu,LEVELINFINITE,MF_UNCHECKED);
+	CheckMenuItem(hmenu,LEVELINCREMENT,MF_UNCHECKED);
+	CheckMenuItem(hmenu,item,MF_CHECKED);
+	
+	if(CBoptions->level==14) 
+		increment=1;
+	else 
+		increment=0;
+	
+	return increment;
 	}
-}
+
+void setmenuchecks(struct CBoptions *CBoptions, HMENU hmenu)
+	{
+	// set menu checks 
+	if(CBoptions->priority)
+		CheckMenuItem(hmenu,OPTIONSPRIORITY,MF_CHECKED);
+	else
+		CheckMenuItem(hmenu,OPTIONSPRIORITY,MF_UNCHECKED);
+	
+	if(CBoptions->highlight)
+     	CheckMenuItem(hmenu,OPTIONSHIGHLIGHT,MF_CHECKED);
+	else
+		CheckMenuItem(hmenu,OPTIONSHIGHLIGHT,MF_UNCHECKED);
+   
+	if(CBoptions->sound)
+		CheckMenuItem(hmenu,OPTIONSSOUND,MF_CHECKED);
+	else
+		CheckMenuItem(hmenu,OPTIONSSOUND,MF_UNCHECKED);
+	
+	if(CBoptions->invert)
+		CheckMenuItem(hmenu,DISPLAYINVERT,MF_CHECKED);
+	else
+		CheckMenuItem(hmenu,DISPLAYINVERT,MF_UNCHECKED);
+	
+	if(CBoptions->mirror)
+		CheckMenuItem(hmenu,DISPLAYMIRROR,MF_CHECKED);
+	else
+		CheckMenuItem(hmenu,DISPLAYMIRROR,MF_UNCHECKED);
+	
+	if(CBoptions->exact)
+		CheckMenuItem(hmenu,LEVELEXACT,MF_CHECKED);
+	else
+		CheckMenuItem(hmenu,LEVELEXACT,MF_UNCHECKED);
+	
+	if(CBoptions->numbers)
+		CheckMenuItem(hmenu,DISPLAYNUMBERS,MF_CHECKED);
+	else
+		CheckMenuItem(hmenu,DISPLAYNUMBERS,MF_UNCHECKED);
+
+	if(CBoptions->userbook)
+		CheckMenuItem(hmenu,OPTIONSUSERBOOK,MF_CHECKED);
+	else
+		CheckMenuItem(hmenu,OPTIONSUSERBOOK,MF_UNCHECKED);
+	}
+
 
 void CBlog(char *str)
-{
-	FILE *cblogfile;
+	{
+	extern char *CBdirectory; // UGLY - where are we getting this from?
 
-	cblog_init();
-	if (str == NULL)
-		return;
-
-	cblogfile = fopen(cblogfile_path, "a");
-	if (cblogfile == NULL)
-		return;
-
-	fprintf(cblogfile, "%s\n", str);
-	fclose(cblogfile);
-}
-
-void cblog(const char *fmt, ...)
-{
-	FILE *fp;
-	va_list args;
-	va_start(args, fmt);
-
-	cblog_init();
-	if (fmt == NULL)
-		return;
-
-	fp = fopen(cblogfile_path, "a");
-	if (fp == NULL)
-		return;
-
-	vfprintf(fp, fmt, args);
-	fclose(fp);
-}
-
-int getopening(CBoptions *CBoptions)
-/* chooses a 3-move opening at random. */
-{
-	int op = 0;
-	int ok = 0;
-
-	srand((unsigned)time(NULL));
-
-	while (!ok) {
-		op = random(174);
-		if (three_move_table[op].attributes & OP_CROSSBOARD) {
-			if (CBoptions->op_crossboard)
-				ok = 1;
-		}
-
-		if (three_move_table[op].attributes & OP_MAILPLAY) {
-			if (CBoptions->op_mailplay)
-				ok = 1;
-		}
-
-		if (three_move_table[op].attributes & OP_BARRED) {
-			if (CBoptions->op_barred)
-				ok = 1;
-		}
-	}
-
-	return op;
-}
-
-/*
- * Return the number of 3-move ballots that will be played based 
- * on the current settings for normal, mail, and lost ballots.
- */
-int num_3move_ballots(CBoptions *options)
-{
-	int i, count;
-
-	for (i = 0, count = 0; i < ARRAY_SIZE(three_move_table); ++i) {
-		if (three_move_table[i].attributes & OP_CROSSBOARD) {
-			if (options->op_crossboard)
-				++count;
-		}
-		else if (three_move_table[i].attributes & OP_MAILPLAY) {
-			if (options->op_mailplay)
-				++count;
-		}
-		else if (three_move_table[i].attributes & OP_BARRED) {
-			if (options->op_barred)
-				++count;
-		}
-	}
-	return(count);
-}
-
-/*
- * Given a 0-based ballot number between 0 .. num_3move_ballots() - 1, return an
- * index into three_move_table[].
- * num_3move_ballots() returns the number of ballots that will be played depending
- * on which subset of the 3-move deck is active.
- */
-int get_3move_index(int ballotnum, CBoptions *CBoptions)
-{
-	int i, count;
-
-	count = 0;
-	for (i = 0; i < ARRAY_SIZE(three_move_table); i++) {
-		if ((three_move_table[i].attributes & OP_CROSSBOARD) && CBoptions->op_crossboard)
-			++count;
-		else if ((three_move_table[i].attributes & OP_MAILPLAY) && CBoptions->op_mailplay)
-			++count;
-		else if ((three_move_table[i].attributes & OP_BARRED) && CBoptions->op_barred)
-			++count;
-
-		if ((count - 1) == ballotnum)
-			return i;
-	}
-
-	/* Should never get here. */
-	assert(false);
-	return(0);
-}
-
-void toggle(int *x)
-{
-	if (*x == 0)
-		*x = 1;
-	else
-		*x = 0;
-}
-
-int builtingametype(void)
-{
-	return GT_ENGLISH;
-}
-
-/*
- * Separate the filename from the path.
- * Return 0 on success, 1 if no separators are found.
- */
-int extract_path(char *name, char *path)
-{
-	int i, len;
-
-	len = (int)strlen(name);
-	for (i = len - 1; i >= 0; --i) {
-		if (name[i] == '\\' || name[i] == '/')
-			break;
-	}
-
-	if (i <= 0)
-		return(1);
-	strncpy(path, name, i);
-	path[i] = 0;
-	return(0);
-}
-
-uint32_t filesize(char *filename)
-{
-	uint32_t size;
-	HANDLE fp;
-
-	fp = CreateFile(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_READONLY, NULL);
-	size = GetFileSize(fp, NULL);
-	CloseHandle(fp);
-	return(size);
-}
-
-/* malloc a buffer large enough to hold the contents of the text file,
- * and read the file into the buffer.
- * Return a pointer to the buffer, or nullptr if the file could not be opened or read.
- */
-char *read_text_file(char *filename, READ_TEXT_FILE_ERROR_TYPE &etype)
-{
-	uint32_t size;
-	size_t bytesread;
-	char *buf;
-	FILE *fp;
-
-	size = filesize(filename);
-	if (size == 0 || size == INVALID_FILE_SIZE) {
-		etype = RTF_FILE_ERROR;
-		return(nullptr);
-	}
-
-	fp = fopen(filename, "r");
-	if (!fp) {
-		etype = RTF_FILE_ERROR;
-		return(nullptr);
-	}
+	// ugly - where is cblogfile??
 	
-	buf = (char *)malloc(size + 1);		/* Leave room for null terminator. */
-	if (!buf) {
-		fclose(fp);
-		etype = RTF_MALLOC_ERROR;
-		return(nullptr);
-	}
 
-	bytesread = fread(buf, 1, size, fp);
-	buf[bytesread] = 0;
-	fclose(fp);
-	etype = RTF_NO_ERROR;
-	return(buf);
-}
+	// open a log file on startup
+	if(cblogfile == NULL)
+		{
+		SetCurrentDirectory(CBdirectory);
+		cblogfile = fopen("CBlog.txt","w");
+		}
 
-bool is_conversion_move(CBmove &move)
-{
-	if (move.jumps > 0)
-		return(true);
-	if (move.oldpiece != move.newpiece)
-		return(true);
-	if ((move.oldpiece & CB_KING) == 0)
-		return(true);
-	return(false);
-}
-
-void detect_nonconversion_draws(PDNgame &game, bool *is_draw_by_repetition, bool *is_draw_by_40move_rule)
-{
-	size_t count;
-	struct gamepos {
-		int color;
-		pos board;
-	};
-
-	*is_draw_by_repetition = false;
-	*is_draw_by_40move_rule = false;
-
-	/* Count the number of most recent successive non-conversion moves. */
-	for (count = 0; count < game.moves.size(); ++count) {
-		if (is_conversion_move(game.moves[game.moves.size() - count - 1].move))
-			break;
-	}
-
-	if (count < 5)
+	// the next two statements should never happen, but we check anyway.
+	if(str == NULL)
+		return;
+	if(cblogfile == NULL)
 		return;
 
-	if (count >= 79) {		/* 40 side moves + 39 other-side moves = 79. */
-		*is_draw_by_40move_rule = true;
-		return;
+	fprintf(cblogfile,"\n%s",str);
+	fflush(cblogfile);
 	}
 
-	/* Get the positions and check for 3-fold repetition. */
-	std::vector<gamepos> positions;
-	gamepos position;
-	Board8x8 board8;
-	int color;
-	if (game.FEN[0])
-		FENtoboard8(board8, game.FEN, &color, game.gametype);
-	else {
-		InitCheckerBoard(board8);
-		color = get_startcolor(game.gametype);
-	}
-	position.color = color;
-	boardtobitboard(board8, &position.board);
-	positions.push_back(position);
 
-	for (size_t i = 0; i < game.moves.size(); ++i) {
-		domove(game.moves[i].move, board8);
-		boardtobitboard(board8, &position.board);
-		position.color = CB_CHANGECOLOR(position.color);
-		positions.push_back(position);
-	}
+int getopening(struct CBoptions *CBoptions)
+	/* chooses a 3-move opening at random. */
+	{
+	int op=0;
+	int ok=0;
+	
+	srand( (unsigned)time( NULL ) );
 
-	int repeat_count = 1;
-	for (int i = 2; i < (int)count; i += 2) {
-		if (memcmp(&positions[positions.size() - i - 1], &positions.back(), sizeof(position)) == 0) {
-			++repeat_count;
-			if (repeat_count == 3) {
-				*is_draw_by_repetition = true;
-				return;
+	while(!ok)
+		{
+		op=random(174);
+		if(three[op][3] == OP_BOARD)         
+			{
+			if(CBoptions->op_crossboard) 
+				ok=1;
+			}
+		if(three[op][3] == OP_MAILPLAY)
+			{
+			if(CBoptions->op_mailplay) 
+				ok=1;
+			}
+		if(three[op][3] == OP_BARRED)
+			{
+			if(CBoptions->op_barred) 
+				ok=1;
 			}
 		}
-	}
-}
-
-void send_game_history(PDNgame &game, Board8x8 currentboard, int currentcolor)
-{
-	int count;
-	int color;
-	std::string gamehist;
-	Board8x8 board8;
-	char reply[ENGINECOMMAND_REPLY_SIZE];
-
-	memcpy(board8, currentboard, sizeof(Board8x8));
-	color = currentcolor;
-
-	/* Unmake each non-conversion move on the local board8, starting with the most recent. */
-	for (count = 0; count < game.movesindex; ++count) {
-		size_t movei = game.movesindex - count - 1;
-		if (is_conversion_move(game.moves[movei].move))
-			break;
-
-		undomove(game.moves[movei].move, board8);
-		color = CB_CHANGECOLOR(color);
-
-		/* Build the pdn list of moves in reverse. */
-		int from = coorstonumber(game.moves[movei].move.from.x, game.moves[movei].move.from.y, game.gametype);
-		int to = coorstonumber(game.moves[movei].move.to.x, game.moves[movei].move.to.y, game.gametype);
-		gamehist = " " + std::to_string(from) + "-" + std::to_string(to) + gamehist;
+	return op;
 	}
 
-	std::string fen;
-	board8toFEN(board8, fen, color, game.gametype);
+int getthreeopening(int n, struct CBoptions *CBoptions)
+	{
+	/* n is the number of the game in the engine match. 
+		getthreeopening returns the number of the opening that should
+		be played in game number n depending on which subset of
+		the 3-move-deck is active */
+	int i;
+	int m;
 
-	gamehist = "set gamehist " + fen + gamehist;
-	enginecommand(gamehist.c_str(), reply);
-}
+	/* play every opening twice */
+	n = n/2;
+
+	/* makes gamenumber: 1 2 3 4 5 6 7 8
+				         n: 0 0 1 1 2 2 3 3 */
+	m=-1;
+	for(i=0;i<174;i++)
+		{
+		/* if the opening is part of the current set, increment m */
+		// normal if((three[i][3]==op_crossboard) && op_crossboard) m++;
+		if((three[i][3]==OP_CTD || three[i][3]==OP_BOARD) && CBoptions->op_crossboard) 
+			m++;
+		if((three[i][3]==OP_BARRED) && CBoptions->op_barred) 
+			m++;
+		if((three[i][3]==OP_MAILPLAY) && CBoptions->op_mailplay) 
+			m++;
+		
+		/* after having found N eligible openings, our counter m is set to N-1, so
+			that it runs from 0...173 at most */
+
+		if(m==n) return i;
+		}
+	return -1;
+	}
+		
+void toggle(int *x)
+	{
+	if(*x==0) 
+		*x=1;
+	else *x=0;
+	}
+   
+int builtingametype(void)
+	{
+	return 21;
+	}
 
 
+int FENtoboard8(int board[8][8], char *p, int *color, int gametype)
+	{
+	/* parses the FEN string in *p and places the result in board8 and color */
+	// example FEN string:
+	// W:W32,31,30,29,28,27,26,25,24,22,21:B23,12,11,10,8,7,6,5,4,3,2,1.
+	// returns 1 on success, 0 on failure.
+	char *token;
+	char *col,*white,*black;
+	char FENstring[256];
+	int i,j;
+	int number;
+	int piece;
+	int length;
+	char colorchar='x';
+	
+	
+	// find the full stop in the FEN string which terminates it and 
+	// replace it with a 0 for termination
+	length = strlen(p);
+	token = p;
+	i = 0;
+	while(token[i] != '.' && i<length)
+		i++;
+	token[i] = 0;
+
+	sprintf(FENstring,"%s",p);
+
+	// detect empty FEN string
+	if( strcmp(FENstring,"") == 0)
+		return 0;
+
+	/* parse color ,whitestring, blackstring*/
+	col = strtok(FENstring,":");
+
+	if(col == NULL)
+		return 0;
+
+	if(strcmp(col,"W")==0) 
+		*color=WHITE;
+	else 
+		*color=BLACK;
+	
+	/* parse position: get white and black strings */
+	
+	white = strtok(NULL,":");
+	if(white == NULL)
+		return 0;
+
+	// check whether this was a normal fen string (white first, then black) or vice versa.
+	colorchar = white[0];
+	if(colorchar == 'B' || colorchar == 'b')
+		{
+		black = white;
+		white = strtok(NULL,":");
+		if(white == NULL)
+			return 0;
+		// reversed fen string
+		}
+	else
+		{
+		black=strtok(NULL,":");
+		if(black == NULL)
+			return 0;
+		}
+	// example FEN string:
+	// W:W32,31,30,29,28,27,26,25,24,22,21:B23,12,11,10,8,7,6,5,4,3,2,1.
+	// skip the W and B characters.
+	white++;
+	black++;
+	
+
+	/* reset board */
+	for(i=0;i<8;i++)
+		{
+		for(j=0;j<8;j++)
+			board[i][j]=0;
+		}
+
+	/* parse white string */
+	token = strtok(white,",");
+
+	while( token != NULL )
+		{
+		/* While there are tokens in "string" */
+		/* a token might be 18, or 18K */
+		piece = WHITE|MAN;
+		if(token[0] == 'K')
+			{
+			piece = WHITE|KING;
+			token++;
+			}
+		number = atoi(token);
+		/* ok, piece and number found, transform number to coors */
+		numbertocoors(number,&i,&j, gametype);
+		board[i][j] = piece;
+		/* Get next token: */
+		token = strtok( NULL, "," );
+		}
+	/* parse black string */
+	token = strtok(black,",");
+	while( token != NULL )
+		{
+		/* While there are tokens in "string" */
+		/* a token might be 18, or 18K */
+		piece = BLACK|MAN;
+		if(token[0] == 'K')
+			{
+			piece = BLACK|KING;
+			token++;
+			}
+		number = atoi(token);
+		/* ok, piece and number found, transform number to coors */
+		numbertocoors(number,&i,&j, gametype);
+		board[i][j] = piece;
+		/* Get next token: */
+		token = strtok( NULL, "," );
+		}
+	return 1;
+	}
+
+
+void board8toFEN(int board[8][8],char *p,int color, int gametype)
+	{
+	int i,j,number;
+	char s[256];
+	/* prints a FEN string into p derived from board */
+	/* sample FEN string:
+		"W:W18,20,23,K25:B02,06,09."*/
+	sprintf(p,"");
+
+	if(color==BLACK)
+		sprintf(s,"B:W");
+	else
+		sprintf(s,"W:W");
+	strcat(p,s);
+	for(j=7;j>=0;j--)
+		{
+		for(i=0;i<8;i++)
+			{
+			sprintf(s,"");
+			number=coorstonumber(i,j, gametype);
+			if(board[i][j]==(WHITE|MAN))
+				sprintf(s,"%i,",number);
+			if(board[i][j]==(WHITE|KING))
+				sprintf(s,"K%i,",number);
+			strcat(p,s);
+			}
+		}
+	/* remove last comma */
+	p[strlen(p)-1]=0;
+	sprintf(s,":B");
+	strcat(p,s);
+	for(j=7;j>=0;j--)
+		{
+		for(i=0;i<8;i++)
+			{
+			sprintf(s,"");
+			number=coorstonumber(i,j, gametype);
+			if(board[i][j]==(BLACK|MAN))
+				sprintf(s,"%i,",number);
+			if(board[i][j]==(BLACK|KING))
+				sprintf(s,"K%i,",number);
+			strcat(p,s);
+			}
+		}
+	p[strlen(p)-1]='.';
+	}
+
+void builddb(char *str)
+	{
+	// call the db generator if there is enough free disk space
+	int error;
+	ULARGE_INTEGER FreeBytesAvailable,TotalNumberOfBytes,TotalNumberOfFreeBytes;
+	__int64 freebytes;
+
+	GetDiskFreeSpaceEx(NULL,&FreeBytesAvailable,&TotalNumberOfBytes,&TotalNumberOfFreeBytes);
+	
+	freebytes = (__int64)(FreeBytesAvailable.LowPart) + (((__int64)FreeBytesAvailable.HighPart)<<32);
+
+	if(freebytes < (DWORD64)220000000)
+		{
+		(str,"not enough free disk space for this operation");
+		return;
+		}
+	else
+		sprintf(str,"There is enough free disk space (about %I64i MB) - building database...", freebytes/1024/1024);
+
+	error=(int) ShellExecute(NULL,"open","db\\dbgen.bat",NULL,NULL,SW_SHOW);
+	if(error<=32)
+		sprintf(str,"error: %i",error);
+	
+	return;	
+	}
