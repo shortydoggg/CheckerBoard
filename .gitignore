@@ -28,3 +28,15 @@ engines/simplech.lib
 *.ipdb
 engines/*.*
 *.bak
+setup/Executables/*.htm
+setup/Executables/*.exe
+setup/Executables/*.dll
+setup/Executables/*.bin
+setup/Executables/gecko.jpg
+Debug/
+x64/
+Release/
+Output/
+setup/Output/
+.vs/
+
